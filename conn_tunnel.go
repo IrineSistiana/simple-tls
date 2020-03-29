@@ -96,11 +96,21 @@ func copyBuffer(dst net.Conn, src net.Conn, buf []byte, timeout time.Duration) (
 		panic("buf size <= 0")
 	}
 
+	ddlLastSet := time.Time{}
+
 	for {
-		src.SetReadDeadline(time.Now().Add(timeout))
+		if time.Since(ddlLastSet) > time.Millisecond*500 {
+			now := time.Now()
+			ddlLastSet = now
+			src.SetDeadline(now.Add(timeout))
+		}
 		nr, er := src.Read(buf)
 		if nr > 0 {
-			dst.SetWriteDeadline(time.Now().Add(timeout))
+			if time.Since(ddlLastSet) > time.Millisecond*500 {
+				now := time.Now()
+				ddlLastSet = now
+				dst.SetDeadline(now.Add(timeout))
+			}
 			nw, ew := dst.Write(buf[0:nr])
 			if nw > 0 {
 				written += int64(nw)
