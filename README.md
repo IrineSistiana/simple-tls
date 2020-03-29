@@ -21,14 +21,16 @@
     # 服务端与客户端都需要(插件模式除外)
     -b string
         [Host:Port] 监听地址 (必需，插件模式除外)
-    -d stringd
+    -d string
         [Host:Port] 目的地地址 (必需，插件模式除外)
 
     # 客户端模式
     -cca string
-        客户端用于验证服务器的base64编码的PEM格式CA证书 
+        客户端用于验证服务器的base64编码的PEM格式CA证书。
+        如果服务端证书是合法证书的话一般不需要此参数，
+        simple-tls会使用系统的证书池去验证证书。
     -n string
-        服务端名称，用于证书验证 (必需)
+        服务端名称，用于证书host name验证 (必需)
 
     # 服务端模式
     -s    
@@ -65,7 +67,8 @@
 * [shadowsocks-windows](https://github.com/shadowsocks/shadowsocks-windows)
 * [shadowsocks-android](https://github.com/shadowsocks/shadowsocks-android)
 * Openwrt [luci-app-shadowsocks](https://github.com/shadowsocks/luci-app-shadowsocks)
-* ...
+* 各种改版路由固件，~~但没用亲自验证过~~
+* ....
 
 ## Android
 
@@ -78,3 +81,9 @@ simple-tls-android是[shadowsocks-android](https://github.com/shadowsocks/shadow
 `-gen-cert` 可以快速的生成一个ECC证书，并打印出base64编码后的cert的用于客户端用`-cca`导入。证书DNSName取自`-n`参数或随机生成。key和cert文件会放在`-key`，`-cert`指定的位置或当前目录`./`。
 
 条件允许的话还是建议从[Let's Encrypt](https://letsencrypt.org/)整一个合法的证书。
+
+追求极致性能用户的可以考虑nginx。如nginx不方便配置，simple-tls与nginx兼容，服务端和客户端可混用。
+
+tls 1.3的加密强度足够。下层的加密强度可降低或不加密。免去又一次加密，节省性能。
+
+仅供个人学习交流使用

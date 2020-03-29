@@ -34,35 +34,32 @@ import (
 	mathRand "math/rand"
 )
 
-func doServer(tlsListener net.Listener, dst string, timeout time.Duration) error {
+func doServer(l net.Listener, tlsConfig *tls.Config, dst string, timeout time.Duration) error {
+
 	for {
-		clientConn, err := tlsListener.Accept()
+		clientRawConn, err := l.Accept()
 		if err != nil {
-			return fmt.Errorf("tlsListener.Accept(): %w", err)
+			return fmt.Errorf("l.Accept(): %w", err)
 		}
 
 		go func() {
-			defer clientConn.Close()
-			tConn, ok := clientConn.(*tls.Conn)
-			if !ok {
-				panic("BUG: clientConn is not a *tls.Conn")
-			}
-
+			defer clientRawConn.Close()
+			clientTLSConn := tls.Server(clientRawConn, tlsConfig)
 			// check client conn before dial dst
-			if err := tConn.Handshake(); err != nil {
-				log.Printf("doServer: tConn.Handshake: %v", err)
+			if err := clientTLSConn.Handshake(); err != nil {
+				log.Printf("doServer: %s, clientTLSConn.Handshake: %v", clientRawConn.RemoteAddr(), err)
 				return
 			}
 
 			dstConn, err := net.Dial("tcp", dst)
 			if err != nil {
-				log.Printf("doServer: net.Dial: %v", err)
+				log.Printf("doServer: %s: net.Dial: %v", clientRawConn.RemoteAddr(), err)
 				return
 			}
 			defer dstConn.Close()
 
-			if err := openTunnel(dstConn, clientConn, timeout); err != nil {
-				log.Printf("doServer: openTunnel: %v", err)
+			if err := openTunnel(dstConn, clientTLSConn, timeout); err != nil {
+				log.Printf("doServer: %s: openTunnel: %v", clientRawConn.RemoteAddr(), err)
 			}
 		}()
 	}
@@ -92,7 +89,7 @@ func generateCertificate(serverName string) (dnsName string, keyPEM, certPEM []b
 
 	template := x509.Certificate{
 		SerialNumber: serialNumber,
-		Subject:      pkix.Name{CommonName: serverName},
+		Subject:      pkix.Name{CommonName: dnsName},
 		DNSNames:     []string{dnsName},
 
 		NotBefore: time.Now(),

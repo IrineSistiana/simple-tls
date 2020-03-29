@@ -55,9 +55,9 @@ func main() {
 
 	commandLine.StringVar(&bindAddr, "b", "", "[Host:Port] bind address")
 	commandLine.StringVar(&dstAddr, "d", "", "[Host:Port] destination address")
-	commandLine.StringVar(&serverName, "n", "", "server name")
 
 	// client only
+	commandLine.StringVar(&serverName, "n", "", "server name")
 	commandLine.StringVar(&cca, "cca", "", "PEM encoded CA in base64 format, client will use it to varify the server")
 
 	// server only
@@ -170,7 +170,7 @@ func main() {
 			tlsConfig.Certificates = []tls.Certificate{cer}
 		}
 
-		err = doServer(tls.NewListener(l, tlsConfig), dstAddr, timeout)
+		err = doServer(l, tlsConfig, dstAddr, timeout)
 		if err != nil {
 			log.Fatalf("main: doServer: %v", err)
 		}

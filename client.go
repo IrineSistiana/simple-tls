@@ -46,9 +46,13 @@ func doClient(l net.Listener, server string, tlsConfig *tls.Config, timeout time
 			}
 			defer serverRawConn.Close()
 
-			serverConn := tls.Client(serverRawConn, tlsConfig)
+			serverTLSConn := tls.Client(serverRawConn, tlsConfig)
+			if err := serverTLSConn.Handshake(); err != nil {
+				log.Printf("doServer: serverTLSConn.Handshake: %v", err)
+				return
+			}
 
-			if err := openTunnel(localConn, serverConn, timeout); err != nil {
+			if err := openTunnel(localConn, serverTLSConn, timeout); err != nil {
 				log.Printf("doServer: openTunnel: %v", err)
 			}
 		}()
