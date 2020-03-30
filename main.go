@@ -80,8 +80,14 @@ func main() {
 	// overwrite args from env
 	if sip003Args != nil {
 		log.Print("main: simple-tls is running as a sip003 plugin")
-		bindAddr = sip003Args.GetLocalAddr()
-		dstAddr = sip003Args.GetRemoteAddr()
+
+		if isServer {
+			dstAddr = sip003Args.GetLocalAddr()
+			bindAddr = sip003Args.GetRemoteAddr()
+		} else {
+			bindAddr = sip003Args.GetLocalAddr()
+			dstAddr = sip003Args.GetRemoteAddr()
+		}
 		tfo = sip003Args.TFO
 		vpn = sip003Args.VPN
 
