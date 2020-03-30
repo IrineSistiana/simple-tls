@@ -7,12 +7,9 @@
 特点：
 
 * 简单：除TLS加密不提供格外的功能 ~~这叫特点?~~
-* 安全：强制使用[TLS1.3](https://en.wikipedia.org/wiki/Transport_Layer_Security#TLS_1.3)协议。强制验证服务端证书。
-* 性能：因为简单所以小而快。
-* shadowsocks插件支持：兼容[shadowsocks SIP003](https://shadowsocks.org/en/spec/Plugin.html)插件协议，这意味着：
-  * 完善的客户端生态：理论上兼容任何已支援[SIP003](https://shadowsocks.org/en/spec/Plugin.html)的shadowsocks版本客户端。无需格外的客户端，只需提供格外的`plugin-opts`参数，把simple-tls复制过去，就能用。
-  * 服务端生态：同上。在已有shadowsocks服务端的基础上，把simple-tls复制过去，只需提供格外的`plugin-opts`给shadowsocks服务端，服务端即可自动启动simple-tls。
-  * 支持Android。
+* 安全：强制使用TLS1.3。
+* 支持shadowsocks插件。
+* 支持Android。
 
 ## 命令
 
@@ -61,15 +58,6 @@
     ss-server -c config.json --plugin simple-tls --plugin-opts "s;key=/path/to/your/key;cert=/path/to/your/cert"
     ss-local -c config.json --plugin simple-tls --plugin-opts "n=your.server.certificates.dnsname"
 
-理论上可作为任何已支援[SIP003](https://shadowsocks.org/en/spec/Plugin.html)的shadowsocks版本的插件。
-
-* [shadowsocks-libev](https://github.com/shadowsocks/shadowsocks-libev)
-* [shadowsocks-windows](https://github.com/shadowsocks/shadowsocks-windows)
-* [shadowsocks-android](https://github.com/shadowsocks/shadowsocks-android)
-* Openwrt [luci-app-shadowsocks](https://github.com/shadowsocks/luci-app-shadowsocks)
-* 各种改版路由固件，~~但没用亲自验证过~~
-* ....
-
 ## Android
 
 simple-tls-android是[shadowsocks-android](https://github.com/shadowsocks/shadowsocks-android)的插件.
@@ -82,8 +70,8 @@ simple-tls-android是[shadowsocks-android](https://github.com/shadowsocks/shadow
 
 条件允许的话还是建议从[Let's Encrypt](https://letsencrypt.org/)整一个合法的证书。
 
-追求极致性能用户的可以考虑nginx。如nginx不方便配置，simple-tls与nginx兼容，服务端和客户端可混用。
+高级用户建议用nginx，又小又快老牌软件稳定可靠功能全。参考nginx官方文档：[Securing TCP Traffic to Upstream Servers](https://docs.nginx.com/nginx/admin-guide/security-controls/securing-tcp-traffic-upstream/)。simple-tls只是配置和使用简单点。
 
-tls 1.3的加密强度足够。下层的加密强度可降低或不加密。免去又一次加密，节省性能。
+tls 1.3的加密强度足够。下层的加密强度可降低或不加密。
 
-仅供个人学习交流使用
+仅供个人娱乐学习交流使用
