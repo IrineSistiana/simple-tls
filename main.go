@@ -58,7 +58,7 @@ func main() {
 
 	// client only
 	commandLine.StringVar(&serverName, "n", "", "server name")
-	commandLine.StringVar(&cca, "cca", "", "PEM encoded CA in base64 format, client will use it to varify the server")
+	commandLine.StringVar(&cca, "cca", "", "PEM encoded CA in base64 format without padding characters, client will use it to varify the server")
 
 	// server only
 	commandLine.BoolVar(&isServer, "s", false, "is server")
@@ -70,7 +70,7 @@ func main() {
 	commandLine.BoolVar(&tfo, "fast-open", false, "enable tfo, only available on linux 4.11+")
 	commandLine.IntVar(&cpu, "cpu", runtime.NumCPU(), "the maximum number of CPUs that can be executing simultaneously")
 
-	commandLine.BoolVar(&genCert, "gen-cert", false, "[This is a helper function]: generate a certificate, store it's key to [-key] and cert to [-cert], print cert in base64 format")
+	commandLine.BoolVar(&genCert, "gen-cert", false, "[This is a helper function]: generate a certificate, store it's key to [-key] and cert to [-cert], print cert in base64 format without padding characters")
 
 	sip003Args, err := GetSIP003Args()
 	if err != nil {
@@ -147,7 +147,7 @@ func main() {
 			log.Fatalf("main: writing cert file [%s]: %v", cert, err)
 		}
 
-		certBase64 := base64.StdEncoding.EncodeToString(certPEM)
+		certBase64 := base64.RawStdEncoding.EncodeToString(certPEM)
 		fmt.Printf("Your new cert dns name is: %s\n", dnsName)
 		fmt.Print("Your new cert base64 string is:\n")
 		fmt.Printf("%s\n", certBase64)
@@ -197,7 +197,7 @@ func main() {
 			tlsConfig.ServerName = strings.SplitN(bindAddr, ":", 2)[0]
 		}
 		if len(cca) != 0 {
-			pem, err := base64.StdEncoding.DecodeString(cca)
+			pem, err := base64.RawStdEncoding.DecodeString(cca)
 			if err != nil {
 				log.Fatalf("main: base64.StdEncoding.DecodeString: %v", err)
 			}

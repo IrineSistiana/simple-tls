@@ -23,7 +23,7 @@
 
     # 客户端模式
     -cca string
-        客户端用于验证服务器的base64编码的PEM格式CA证书。
+        客户端用于验证服务器的无补全的base64编码的PEM格式CA证书。
         如果服务端证书是合法证书的话一般不需要此参数，
         simple-tls会使用系统的证书池去验证证书。
     -n string
@@ -39,7 +39,9 @@
 
     # 其他
     -gen-cert
-        [This is a helper function]: generate a certificate, store it's key to [-key] and cert to [-cert], print cert in base64 format
+        [This is a helper function]: generate a certificate, 
+        store it's key to [-key] and cert to [-cert],
+        print cert in base64 format without padding characters
     -cpu int
         the maximum number of CPUs that can be executing simultaneously
     -fast-open
@@ -76,7 +78,9 @@ simple-tls-android是[shadowsocks-android](https://github.com/shadowsocks/shadow
 
 ## Tips
 
-`-gen-cert` 可以快速的生成一个ECC证书，并打印出base64编码后的cert的用于客户端用`-cca`导入。证书DNSName取自`-n`参数或随机生成。key和cert文件会放在`-key`，`-cert`指定的位置或当前目录`./`。
+无补全的base64编码： 可以理解为：如果编码末尾有`=`，去掉它们。
+
+`-gen-cert` 可以快速的生成一个ECC证书，并打印出无补全的base64编码后的cert的用于客户端用`-cca`导入。证书DNSName取自`-n`参数或随机生成。key和cert文件会放在`-key`，`-cert`指定的位置或当前目录`./`。
 
 条件允许的话还是建议从[Let's Encrypt](https://letsencrypt.org/)整一个合法的证书。
 
