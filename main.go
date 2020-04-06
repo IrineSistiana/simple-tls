@@ -81,6 +81,15 @@ func main() {
 	if sip003Args != nil {
 		log.Print("main: simple-tls is running as a sip003 plugin")
 
+		opts, err := FormatSSPluginOptions(sip003Args.SS_PLUGIN_OPTIONS)
+		if err != nil {
+			log.Fatalf("main: invalid sip003 SS_PLUGIN_OPTIONS: %v", err)
+		}
+
+		if err := commandLine.Parse(opts); err != nil {
+			log.Printf("main: WARNING: sip003Args: commandLine.Parse: %v", err)
+		}
+
 		if isServer {
 			dstAddr = sip003Args.GetLocalAddr()
 			bindAddr = sip003Args.GetRemoteAddr()
@@ -91,14 +100,6 @@ func main() {
 		tfo = sip003Args.TFO
 		vpn = sip003Args.VPN
 
-		opts, err := FormatSSPluginOptions(sip003Args.SS_PLUGIN_OPTIONS)
-		if err != nil {
-			log.Fatalf("main: invalid sip003 SS_PLUGIN_OPTIONS: %v", err)
-		}
-
-		if err := commandLine.Parse(opts); err != nil {
-			log.Printf("main: WARNING: sip003Args: commandLine.Parse: %v", err)
-		}
 	} else {
 		err := commandLine.Parse(os.Args[1:])
 		if err != nil {
