@@ -64,6 +64,16 @@ simple-tls-android是[shadowsocks-android](https://github.com/shadowsocks/shadow
 
 支援Android 7以上系统。
 
+## 自己编译
+
+安装go：[golang.org](https://golang.org/dl/)
+
+在本地系统安装：
+
+    go get -u github.com/IrineSistiana/simple-tls
+
+或者交叉编译：[参考](https://golang.org/cmd/go/#hdr-Compile_packages_and_dependencies)
+
 ## Tips
 
 `-gen-cert` 可以快速的生成一个ECC证书，并打印出base64编码后的cert的用于客户端用`-cca`导入。证书DNSName取自`-n`参数或随机生成。key和cert文件会放在`-key`，`-cert`指定的位置或当前目录`./`。
@@ -73,5 +83,7 @@ simple-tls-android是[shadowsocks-android](https://github.com/shadowsocks/shadow
 高级用户建议用nginx，又小又快老牌软件稳定可靠功能全。参考nginx官方文档：[Securing TCP Traffic to Upstream Servers](https://docs.nginx.com/nginx/admin-guide/security-controls/securing-tcp-traffic-upstream/)。simple-tls只是配置和使用简单点。
 
 tls 1.3的加密强度足够。下层的加密强度可降低或不加密。
+
+---
 
 仅供个人娱乐学习交流使用
