@@ -29,39 +29,91 @@ import (
 	"log"
 	"math/big"
 	"net"
+	"net/http"
 	"time"
 
 	mathRand "math/rand"
+
+	"github.com/gorilla/websocket"
 )
 
-func doServer(l net.Listener, tlsConfig *tls.Config, dst string, timeout time.Duration) error {
-
-	for {
-		clientRawConn, err := l.Accept()
-		if err != nil {
-			return fmt.Errorf("l.Accept(): %w", err)
+func doServer(l net.Listener, tlsConfig *tls.Config, dst string, wss bool, path string, timeout time.Duration) error {
+	if wss {
+		httpMux := http.NewServeMux()
+		wsss := &wssServer{
+			upgrader: websocket.Upgrader{
+				HandshakeTimeout: time.Second * 8,
+				ReadBufferSize:   0,
+				WriteBufferSize:  0,
+			},
+			dst:     dst,
+			timeout: timeout,
 		}
-
-		go func() {
-			defer clientRawConn.Close()
-			clientTLSConn := tls.Server(clientRawConn, tlsConfig)
-			// check client conn before dial dst
-			if err := clientTLSConn.Handshake(); err != nil {
-				log.Printf("doServer: %s, clientTLSConn.Handshake: %v", clientRawConn.RemoteAddr(), err)
-				return
-			}
-
-			dstConn, err := net.Dial("tcp", dst)
+		httpMux.Handle(path, wsss)
+		err := http.Serve(tls.NewListener(l, tlsConfig), httpMux)
+		if err != nil {
+			return fmt.Errorf("http.Serve: %v", err)
+		}
+	} else {
+		for {
+			clientRawConn, err := l.Accept()
 			if err != nil {
-				log.Printf("doServer: %s: net.Dial: %v", clientRawConn.RemoteAddr(), err)
-				return
+				return fmt.Errorf("l.Accept(): %w", err)
 			}
-			defer dstConn.Close()
 
-			if err := openTunnel(dstConn, clientTLSConn, timeout); err != nil {
-				log.Printf("doServer: %s: openTunnel: %v", clientRawConn.RemoteAddr(), err)
-			}
-		}()
+			go func() {
+				defer clientRawConn.Close()
+				clientTLSConn := tls.Server(clientRawConn, tlsConfig)
+
+				// check client conn before dial dst
+				clientRawConn.SetDeadline(time.Now().Add(time.Second * 5))
+				if err := clientTLSConn.Handshake(); err != nil {
+					log.Printf("ERROR: doServer: %s, clientTLSConn.Handshake: %v", clientRawConn.RemoteAddr(), err)
+					return
+				}
+				clientRawConn.SetDeadline(time.Time{})
+
+				dstConn, err := net.Dial("tcp", dst)
+				if err != nil {
+					log.Printf("ERROR: doServer: %s: net.Dial: %v", clientRawConn.RemoteAddr(), err)
+					return
+				}
+				defer dstConn.Close()
+
+				if err := openTunnel(dstConn, clientTLSConn, timeout); err != nil {
+					log.Printf("ERROR: doServer: %s: openTunnel: %v", clientRawConn.RemoteAddr(), err)
+				}
+			}()
+		}
+	}
+	return nil
+}
+
+type wssServer struct {
+	upgrader websocket.Upgrader
+	dst      string
+	timeout  time.Duration
+}
+
+// ServeHTTP implements http.Handler interface
+func (s *wssServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	leftWSConn, err := s.upgrader.Upgrade(w, r, nil)
+	if err != nil {
+		log.Printf("ERROR: ServeHTTP: %s, Upgrade: %v", r.RemoteAddr, err)
+		return
+	}
+
+	leftConn := wrapWebSocketConn(leftWSConn)
+
+	dstConn, err := net.Dial("tcp", s.dst)
+	if err != nil {
+		log.Printf("ERROR: ServeHTTP: %s: net.Dial: %v", r.RemoteAddr, err)
+		return
+	}
+	defer dstConn.Close()
+
+	if err := openTunnel(dstConn, leftConn, s.timeout); err != nil {
+		log.Printf(": ServeHTTP: %s: openTunnel: %v", r.RemoteAddr, err)
 	}
 }
 

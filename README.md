@@ -4,22 +4,28 @@
 
 ---
 
+在这里下载：[release](https://github.com/IrineSistiana/simple-tls/releases)
+
 特点：
 
-* 简单：除TLS加密不提供格外的功能 ~~这叫特点?~~
-* 安全：强制使用TLS1.3。
-* 支持shadowsocks插件。
-* 支持Android。
+* 强制使用TLS1.3
+* 支持Websocket
+* 支持shadowsocks插件
+* 支持Android
+* 简单
 
 ## 命令
 
     |client|-->|simple-tls client|--TLS1.3-->|simple-tls server|-->|destination|
 
-    # 服务端与客户端都需要(插件模式除外)
     -b string
         [Host:Port] 监听地址 (必需，插件模式除外)
     -d string
         [Host:Port] 目的地地址 (必需，插件模式除外)
+    -wss
+        使用 Websocket Secure 协议
+    -path string
+        Websocket 的路径
 
     # 客户端模式
     -cca string
@@ -49,6 +55,8 @@
     -t int
         timeout after sec (default 300)
 
+**无补全的base64编码：**如果base64编码末尾有`=`，去掉它们。
+
 ## SIP003
 
 支援shadowsocks [SIP003](https://shadowsocks.org/en/spec/Plugin.html)插件协议。接受的键值对[同上](#命令)。
@@ -57,36 +65,29 @@
 
 以[shadowsocks-libev](https://github.com/shadowsocks/shadowsocks-libev)为例：
 
+    # TLS
     ss-server -c config.json --plugin simple-tls --plugin-opts "s;key=/path/to/your/key;cert=/path/to/your/cert"
     ss-local -c config.json --plugin simple-tls --plugin-opts "n=your.server.certificates.dnsname"
 
+    # WSS
+    ss-server -c config.json --plugin simple-tls --plugin-opts "s;wss;key=/path/to/your/key;cert=/path/to/your/cert"
+    ss-local -c config.json --plugin simple-tls --plugin-opts "wss;n=your.server.certificates.dnsname"
+
 ## Android
 
-simple-tls-android是[shadowsocks-android](https://github.com/shadowsocks/shadowsocks-android)的插件.
+是[shadowsocks-android](https://github.com/shadowsocks/shadowsocks-android)的插件。
 
 支援Android 7以上系统。
 
-## 自己编译
-
-安装go：[golang.org](https://golang.org/dl/)
-
-在本地系统安装：
-
-    go get -u github.com/IrineSistiana/simple-tls
-
-或者交叉编译：[参考](https://golang.org/cmd/go/#hdr-Compile_packages_and_dependencies)
-
 ## Tips
 
-无补全的base64编码： 可以理解为：如果编码末尾有`=`，去掉它们。
+`-gen-cert` 可以快速的生成一个ECC证书，并打印出无补全的base64编码后的cert的用于客户端用`-cca`导入。证书DNSName取自`-n`参数或随机生成。key和cert文件会放在`-key`，`-cert`指定的位置或当前目录`./`。比如：
 
-`-gen-cert` 可以快速的生成一个ECC证书，并打印出无补全的base64编码后的cert的用于客户端用`-cca`导入。证书DNSName取自`-n`参数或随机生成。key和cert文件会放在`-key`，`-cert`指定的位置或当前目录`./`。
+    simple-tls -gen-cert -n example.com
 
-条件允许的话还是建议从[Let's Encrypt](https://letsencrypt.org/)整一个合法的证书。
+从[Let's Encrypt](https://letsencrypt.org/)可以免费获得一个合法的证书。
 
-高级用户建议用nginx，又小又快老牌软件稳定可靠功能全。参考nginx官方文档：[Securing TCP Traffic to Upstream Servers](https://docs.nginx.com/nginx/admin-guide/security-controls/securing-tcp-traffic-upstream/)。simple-tls只是配置和使用简单点。
-
-tls 1.3的加密强度足够。下层的加密强度可降低或不加密。
+TLS 1.3的加密强度足够。下层的加密强度可降低或不加密。
 
 ---
 

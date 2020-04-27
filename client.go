@@ -22,13 +22,34 @@ import (
 	"fmt"
 	"log"
 	"net"
+	"strings"
+	"sync"
 	"time"
+
+	"github.com/gorilla/websocket"
 )
 
-func doClient(l net.Listener, server string, tlsConfig *tls.Config, timeout time.Duration, vpnMode, tfo bool) error {
+func doClient(l net.Listener, server string, tlsConfig *tls.Config, wss bool, path string, timeout time.Duration, vpnMode, tfo bool) error {
 	dialer := net.Dialer{
+		Timeout: time.Second * 5,
 		Control: getControlFunc(&tcpConfig{vpnMode: vpnMode, tfo: tfo}),
 	}
+
+	wsDialer := &websocket.Dialer{
+		TLSClientConfig: tlsConfig,
+		NetDial: func(network, _ string) (net.Conn, error) {
+			// overwrite url host addr
+			return dialer.Dial(network, server)
+		},
+		WriteBufferPool:  &sync.Pool{},
+		HandshakeTimeout: time.Second * 8,
+	}
+
+	if !strings.HasPrefix(path, "/") {
+		path = "/" + path
+	}
+
+	url := "wss://" + tlsConfig.ServerName + path
 
 	for {
 		localConn, err := l.Accept()
@@ -38,22 +59,37 @@ func doClient(l net.Listener, server string, tlsConfig *tls.Config, timeout time
 
 		go func() {
 			defer localConn.Close()
+			var serverConn net.Conn
 
-			serverRawConn, err := dialer.Dial("tcp", server)
-			if err != nil {
-				log.Printf("doClient: dialer.Dial: %v", err)
-				return
+			if wss {
+				serverWSSConn, err := dialWebsocketConn(wsDialer, url)
+				if err != nil {
+					log.Printf("ERROR: doClient: dialWebsocketConn: %v", err)
+					return
+				}
+				defer serverWSSConn.Close()
+
+				serverConn = serverWSSConn
+			} else {
+				serverRawConn, err := dialer.Dial("tcp", server)
+				if err != nil {
+					log.Printf("ERROR: doClient: dialer.Dial: %v", err)
+					return
+				}
+				defer serverRawConn.Close()
+
+				serverTLSConn := tls.Client(serverRawConn, tlsConfig)
+
+				if err := tlsHandshakeTimeout(serverTLSConn, time.Second*5); err != nil {
+					log.Printf("ERROR: doClient: tlsHandshakeTimeout: %v", err)
+					return
+				}
+
+				serverConn = serverTLSConn
 			}
-			defer serverRawConn.Close()
 
-			serverTLSConn := tls.Client(serverRawConn, tlsConfig)
-			if err := serverTLSConn.Handshake(); err != nil {
-				log.Printf("doServer: serverTLSConn.Handshake: %v", err)
-				return
-			}
-
-			if err := openTunnel(localConn, serverTLSConn, timeout); err != nil {
-				log.Printf("doServer: openTunnel: %v", err)
+			if err := openTunnel(localConn, serverConn, timeout); err != nil {
+				log.Printf("ERROR: doClient: openTunnel: %v", err)
 			}
 		}()
 	}

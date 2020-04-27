@@ -45,8 +45,8 @@ func main() {
 		os.Exit(0)
 	}()
 
-	var bindAddr, dstAddr, serverName, cca, cert, key string
-	var isServer, tfo, vpn, genCert bool
+	var bindAddr, dstAddr, serverName, cca, cert, key, path string
+	var isServer, wss, tfo, vpn, genCert bool
 	var cpu int
 	var timeout time.Duration
 	var timeoutFlag int
@@ -55,6 +55,8 @@ func main() {
 
 	commandLine.StringVar(&bindAddr, "b", "", "[Host:Port] bind address")
 	commandLine.StringVar(&dstAddr, "d", "", "[Host:Port] destination address")
+	commandLine.BoolVar(&wss, "wss", false, "using wss protocol")
+	commandLine.StringVar(&path, "path", "/", "[path] wss path")
 
 	// client only
 	commandLine.StringVar(&serverName, "n", "", "server name")
@@ -158,13 +160,14 @@ func main() {
 	timeout = time.Duration(timeoutFlag) * time.Second
 	runtime.GOMAXPROCS(cpu)
 
-	if isServer {
-		lc := net.ListenConfig{Control: getControlFunc(&tcpConfig{tfo: tfo, vpnMode: vpn})}
-		l, err := lc.Listen(context.Background(), "tcp", bindAddr)
-		if err != nil {
-			log.Fatalf("main: net.Listen: %v", err)
-		}
+	if len(bindAddr) == 0 {
+		log.Fatal("main: bind addr is required")
+	}
+	if len(dstAddr) == 0 {
+		log.Fatal("main: destination addr is required")
+	}
 
+	if isServer {
 		tlsConfig := new(tls.Config)
 		tlsConfig.MinVersion = tls.VersionTLS13
 		if len(cert) == 0 || len(key) == 0 {
@@ -177,17 +180,18 @@ func main() {
 			tlsConfig.Certificates = []tls.Certificate{cer}
 		}
 
-		err = doServer(l, tlsConfig, dstAddr, timeout)
+		lc := net.ListenConfig{Control: getControlFunc(&tcpConfig{tfo: tfo})}
+		l, err := lc.Listen(context.Background(), "tcp", bindAddr)
+		if err != nil {
+			log.Fatalf("main: net.Listen: %v", err)
+		}
+
+		err = doServer(l, tlsConfig, dstAddr, wss, path, timeout)
 		if err != nil {
 			log.Fatalf("main: doServer: %v", err)
 		}
 
 	} else { // do client
-		l, err := net.Listen("tcp", bindAddr)
-		if err != nil {
-			log.Fatalf("main: net.Listen: %v", err)
-		}
-
 		tlsConfig := new(tls.Config)
 		tlsConfig.ClientSessionCache = tls.NewLRUClientSessionCache(8)
 		tlsConfig.MinVersion = tls.VersionTLS13
@@ -208,7 +212,14 @@ func main() {
 			}
 			tlsConfig.RootCAs = rootCAs
 		}
-		err = doClient(l, dstAddr, tlsConfig, timeout, vpn, tfo)
+
+		lc := net.ListenConfig{}
+		l, err := lc.Listen(context.Background(), "tcp", bindAddr)
+		if err != nil {
+			log.Fatalf("main: net.Listen: %v", err)
+		}
+
+		err = doClient(l, dstAddr, tlsConfig, wss, path, timeout, vpn, tfo)
 		if err != nil {
 			log.Fatalf("main: doServer: %v", err)
 		}

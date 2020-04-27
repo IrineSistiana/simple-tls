@@ -17,7 +17,16 @@
 
 package main
 
-type tcpConfig struct {
-	vpnMode bool
-	tfo     bool
+import (
+	"crypto/tls"
+	"time"
+)
+
+func tlsHandshakeTimeout(c *tls.Conn, timeout time.Duration) error {
+	c.SetDeadline(time.Now().Add(timeout))
+	if err := c.Handshake(); err != nil {
+		return err
+	}
+	c.SetDeadline(time.Time{})
+	return nil
 }
