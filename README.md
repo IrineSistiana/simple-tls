@@ -1,67 +1,65 @@
 # simple-tls
 
-可能是最简单的tls插件。
+可能是最简单的tls/wss插件。
+
+The `README.md` is also available in English: `README_en.md`
 
 ---
 
 在这里下载：[release](https://github.com/IrineSistiana/simple-tls/releases)
 
-特点：
-
-* 强制使用TLS1.3
-* 支持Websocket
-* 支持shadowsocks插件
-* 支持Android
-* 简单
-
 ## 命令
 
-    |client|-->|simple-tls client|--TLS1.3-->|simple-tls server|-->|destination|
+        client bind addr               server bind addr
+               |                             |
+    |client|-->|simple-tls client|--TLS1.3-->|simple-tls server|-->|final destination|
+                                             |                     |   
+                                       client dst addr       server dst addr  
 
+    # 通用参数
     -b string
-        [Host:Port] 监听地址 (必需，插件模式除外)
+        [Host:Port] 监听地址
     -d string
-        [Host:Port] 目的地地址 (必需，插件模式除外)
+        [Host:Port] 目的地地址
     -wss
-        使用 Websocket Secure 协议
+        使用 Websocket Secure 协议，该选项服务端与客户端需一致(都有或都没有) 
     -path string
         Websocket 的路径
 
-    # 客户端模式
-    -cca string
-        客户端用于验证服务器的无补全的base64编码的PEM格式CA证书。
-        如果服务端证书是合法证书的话一般不需要此参数，
-        simple-tls会使用系统的证书池去验证证书。
+    # 作为客户端运行
     -n string
-        服务端名称，用于证书host name验证 (必需)
+        服务器证书名
+    -cca string
+        用于验证服务器身份的PEM格式CA证书的base64编码
 
-    # 服务端模式
+    # 作为服务器运行
     -s    
-        以服务端模式运行，不加此参数就变客户端了 (必需)
+        以服务端模式运行 
     -cert string
-        [Path] PEM格式的证书 (必需)
+        [Path] PEM格式的证书位置
     -key string
-        [Path] PEM格式的密钥 (必需)
+        [Path] PEM格式的密钥位置
 
-    # 其他
+    # 其他不重要参数
     -gen-cert
-        [This is a helper function]: generate a certificate, 
-        store it's key to [-key] and cert to [-cert],
-        print cert in base64 format without padding characters
+        快速生成一个ecc证书
     -cpu int
-        the maximum number of CPUs that can be executing simultaneously
+        允许使用几个CPU
     -fast-open
-        enable tfo, only available on linux 4.11+
+        启用TCP fast open，仅支持 Linux内核 4.11+
     -t int
-        timeout after sec (default 300)
+        空连接超时时间 (默认 300s)
 
-**无补全的base64编码：**如果base64编码末尾有`=`，去掉它们。
+## 单独使用
 
-## SIP003
+    作为服务器: 
+    simple-tls -b 0.0.0.0:1080 -d 127.0.0.1:12345 -s -key /path/to/your/key -cert /path/to/your/cert
+    作为客户端:
+    simple-tls -b 127.0.0.1:1080 -d your_server_ip:1080 -n your.server.certificates.dnsname
 
-支援shadowsocks [SIP003](https://shadowsocks.org/en/spec/Plugin.html)插件协议。接受的键值对[同上](#命令)。
+## 作为SIP003插件使用
 
-以SIP003插件模式运行时，`b`,`d`参数由shadowsocks自动设定，无需再次在`plugin-opts`中设定。
+遵守shadowsocks [SIP003](https://shadowsocks.org/en/spec/Plugin.html)插件协议。接受的键值对[同上](#命令)。shadowsocks会自动设定`-d` `-b`参数，无需手动设定。
 
 以[shadowsocks-libev](https://github.com/shadowsocks/shadowsocks-libev)为例：
 
@@ -75,19 +73,13 @@
 
 ## Android
 
-是[shadowsocks-android](https://github.com/shadowsocks/shadowsocks-android)的插件。
-
-支援Android 7以上系统。
+是[shadowsocks-android](https://github.com/shadowsocks/shadowsocks-android)的插件。需先安装shadowsocks-android。
 
 ## Tips
 
-`-gen-cert` 可以快速的生成一个ECC证书，并打印出无补全的base64编码后的cert的用于客户端用`-cca`导入。证书DNSName取自`-n`参数或随机生成。key和cert文件会放在`-key`，`-cert`指定的位置或当前目录`./`。比如：
+`-gen-cert` 可以快速的生成一个ECC证书，并打印出base64编码后的cert的用于客户端用`-cca`导入。证书DNSName取自`-n`参数或随机生成。key和cert文件会放在`-key`，`-cert`指定的位置或当前目录`./`。比如：
 
     simple-tls -gen-cert -n example.com
-
-从[Let's Encrypt](https://letsencrypt.org/)可以免费获得一个合法的证书。
-
-TLS 1.3的加密强度足够。下层的加密强度可降低或不加密。
 
 ---
 
