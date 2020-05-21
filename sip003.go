@@ -20,7 +20,6 @@ package main
 import (
 	"errors"
 	"flag"
-	"fmt"
 	"net"
 	"os"
 	"strings"
@@ -85,14 +84,14 @@ func FormatSSPluginOptions(spo string) ([]string, error) {
 	commandLineOption := make([]string, 0)
 	op := strings.Split(spo, ";")
 	for _, so := range op {
-		optionPair := strings.Split(so, "=")
+		optionPair := strings.SplitN(so, "=", 2)
 		switch len(optionPair) {
 		case 1:
 			commandLineOption = append(commandLineOption, "-"+optionPair[0])
 		case 2:
 			commandLineOption = append(commandLineOption, "-"+optionPair[0], optionPair[1])
 		default:
-			return nil, fmt.Errorf("invalid option string [%s]", so)
+			panic("unexpected pair size")
 		}
 	}
 
