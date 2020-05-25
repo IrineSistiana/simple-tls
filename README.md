@@ -1,14 +1,18 @@
 # simple-tls
 
-可能是最简单的tls/wss插件。
+Probably the simplest tls/wss plugin. 
 
-The `README.md` is also available in English: `README_en.md`
+It can:
+
+- Protect your connections with real TLS1.3(not just obfuscating).
+- Transfer your data via CDN. (optional)
+- Run as a SIP003 plugin and run on Android platform.
 
 ---
 
-在这里下载：[release](https://github.com/IrineSistiana/simple-tls/releases)
+Download here: [release](https://github.com/IrineSistiana/simple-tls/releases)
 
-## 命令
+## Command help
 
         client bind addr               server bind addr
                |                             |
@@ -16,52 +20,56 @@ The `README.md` is also available in English: `README_en.md`
                                              |                     |   
                                        client dst addr       server dst addr  
 
-    # 通用参数
+    # Common arguments
     -b string
-        [Host:Port] 监听地址
+        [Host:Port]  bind addr
     -d string
-        [Host:Port] 目的地地址
+        [Host:Port]  destination addr
     -wss
-        使用 Websocket Secure 协议，该选项服务端与客户端需一致(都有或都没有) 
+        Use Websocket Secure protocol
     -path string
-        Websocket 的路径
+        Websocket path
 
-    # 作为客户端运行
+    # Run as a client
     -n string
-        服务器证书名
+        Server certificate name
     -cca string
-        用于验证服务器身份的PEM格式CA证书的base64编码
+        A base64 encoded PEM CA certificate, used to verify the identity of the server.
 
-    # 作为服务器运行
+    # Run as a server
     -s    
-        以服务端模式运行 
+        Run as a server
     -cert string
-        [Path] PEM格式的证书位置
+        [Path] PEM certificate
     -key string
-        [Path] PEM格式的密钥位置
+        [Path] PEM ket
 
-    # 其他不重要参数
+    # Other geek's arguments
     -gen-cert
-        快速生成一个ecc证书
+        [This is a helper function]: generate a ecc certificate.
+        The DNSName of this certificate will be [-n].
+        It's key will be stored at [-key] and it's cert will be stored at [-cert].
+        e.g. -gen-cert -n example.com -key ./example.com.key -cert ./example.com.cert
+
     -cpu int
-        允许使用几个CPU
+        the maximum number of CPUs that can be executing simultaneously
     -fast-open
-        启用TCP fast open，仅支持 Linux内核 4.11+
+        enable tfo, only available on linux 4.11+
     -t int
-        空连接超时时间 (默认 300s)
+        timeout after sec (default 300)
 
-## 单独使用
+## Standalone mode
 
-    作为服务器: 
-    simple-tls -b 0.0.0.0:1080 -d 127.0.0.1:12345 -s -key /path/to/your/key -cert /path/to/your/cert
-    作为客户端:
-    simple-tls -b 127.0.0.1:1080 -d your_server_ip:1080 -n your.server.certificates.dnsname
+    Run as a server: 
+        simple-tls -b 0.0.0.0:1080 -d 127.0.0.1:12345 -s -key /path/to/your/key -cert /path/to/your/cert
+    Run as a client:
+        simple-tls -b 127.0.0.1:1080 -d your_server_ip:1080 -n your.server.certificates.dnsname
 
-## 作为SIP003插件使用
+## SIP003 mode
 
-遵守shadowsocks [SIP003](https://shadowsocks.org/en/spec/Plugin.html)插件协议。接受的键值对[同上](#命令)。shadowsocks会自动设定`-d` `-b`参数，无需手动设定。
+Comply with shadowsocks [SIP003](https://shadowsocks.org/en/spec/Plugin.html) plugin protocol. Accepted key-value pair are [same as above](#command). Shadowsocks will automatically set `-d` and `-b` parameters, no need to set manually.
 
-以[shadowsocks-libev](https://github.com/shadowsocks/shadowsocks-libev)为例：
+Take [shadowsocks-libev](https://github.com/shadowsocks/shadowsocks-libev) as an example:
 
     # TLS
     ss-server -c config.json --plugin simple-tls --plugin-opts "s;key=/path/to/your/key;cert=/path/to/your/cert"
@@ -73,14 +81,21 @@ The `README.md` is also available in English: `README_en.md`
 
 ## Android
 
-是[shadowsocks-android](https://github.com/shadowsocks/shadowsocks-android)的插件。需先安装shadowsocks-android。
+`simple-tls-android` is a plugin for [shadowsocks-android](https://github.com/shadowsocks/shadowsocks-android). You need to download and install shadowsocks-android first.
 
-## Tips
+## Tips for certificate and -cca argument
 
-`-gen-cert` 可以快速的生成一个ECC证书，并打印出base64编码后的cert的用于客户端用`-cca`导入。证书DNSName取自`-n`参数或随机生成。key和cert文件会放在`-key`，`-cert`指定的位置或当前目录`./`。比如：
+To start a server, the argument `-key` and `-cert` are required. Because simple-tls needs a certificate to establish real TLS1.3 connections.
 
-    simple-tls -gen-cert -n example.com
+For your safety, the server certificate verification in simple-tls **can't be disabled**. You need to use `-cca` argument to import the CA certificate in the client if you are using a self-signed certificate in server.
+
+In the test environment, you can use `-gen-cert` in server to quickly generate an ECC certificate, and use `-cca` in the client to import its cert as CA.
+
+Considering that the TLS1.3 layer is sufficiently secure, a simple encryption can be used in lower-layer connections to increase speed.
+
+## Tips for wss 
+
+Enable `-wss` if you want to transfer data in HTTP protocol. e.g. transfer data via CDN.
 
 ---
 
-仅供个人娱乐学习交流使用
