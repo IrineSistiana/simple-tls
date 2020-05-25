@@ -18,99 +18,31 @@
 package main
 
 import (
-	"crypto/tls"
-	"fmt"
-	"io"
+	"context"
 	"net"
+	"net/http"
 	"time"
 
-	"github.com/gorilla/websocket"
+	"nhooyr.io/websocket"
 )
 
-// webSocketConnWrapper is a wrapper for net.Conn over WebSocket connection.
-type webSocketConnWrapper struct {
-	ws     *websocket.Conn
-	reader io.Reader
-}
+const (
+	dialTimeout = time.Second * 3
+)
 
-func wrapWebSocketConn(c *websocket.Conn) net.Conn {
-	return &webSocketConnWrapper{ws: c}
-}
+func dialWebsocketConn(client *http.Client, url string) (net.Conn, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), dialTimeout)
+	defer cancel()
 
-func dialWebsocketConn(d *websocket.Dialer, url string) (net.Conn, error) {
-	c, _, err := d.Dial(url, nil)
+	opt := &websocket.DialOptions{
+		HTTPClient:      client,
+		CompressionMode: websocket.CompressionDisabled,
+		HTTPHeader:      nil,
+	}
+
+	c, _, err := websocket.Dial(ctx, url, opt)
 	if err != nil {
 		return nil, err
 	}
-
-	uc := c.UnderlyingConn()
-	if tlsConn, ok := uc.(*tls.Conn); ok {
-		if err := tlsHandshakeTimeout(tlsConn, time.Second*5); err != nil {
-			c.Close()
-			return nil, fmt.Errorf("tlsHandshakeTimeout: %v", err)
-		}
-	}
-	return wrapWebSocketConn(c), err
-}
-
-// Read implements io.Reader.
-func (c *webSocketConnWrapper) Read(b []byte) (int, error) {
-	n, err := c.read(b)
-	if websocket.IsCloseError(err, websocket.CloseAbnormalClosure) {
-		err = io.EOF
-	}
-	return n, err
-}
-
-func (c *webSocketConnWrapper) read(b []byte) (int, error) {
-	var err error
-	for {
-		//previous reader reach the EOF, get next reader
-		if c.reader == nil {
-			//always BinaryMessage
-			_, c.reader, err = c.ws.NextReader()
-			if err != nil {
-				return 0, err
-			}
-		}
-
-		n, err := c.reader.Read(b)
-		if n == 0 && err == io.EOF {
-			c.reader = nil
-			continue //nothing left in this reader
-		}
-		return n, err
-	}
-}
-
-// Write implements io.Writer.
-func (c *webSocketConnWrapper) Write(b []byte) (int, error) {
-	if err := c.ws.WriteMessage(websocket.BinaryMessage, b); err != nil {
-		return 0, err
-	}
-	return len(b), nil
-}
-
-func (c *webSocketConnWrapper) Close() error {
-	return c.ws.Close()
-}
-
-func (c *webSocketConnWrapper) LocalAddr() net.Addr {
-	return c.ws.LocalAddr()
-}
-
-func (c *webSocketConnWrapper) RemoteAddr() net.Addr {
-	return c.ws.RemoteAddr()
-}
-
-func (c *webSocketConnWrapper) SetDeadline(t time.Time) error {
-	return c.ws.UnderlyingConn().SetDeadline(t)
-}
-
-func (c *webSocketConnWrapper) SetReadDeadline(t time.Time) error {
-	return c.ws.SetReadDeadline(t)
-}
-
-func (c *webSocketConnWrapper) SetWriteDeadline(t time.Time) error {
-	return c.ws.SetWriteDeadline(t)
+	return websocket.NetConn(context.Background(), c, websocket.MessageBinary), nil
 }

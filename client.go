@@ -18,15 +18,16 @@
 package main
 
 import (
+	"context"
 	"crypto/tls"
 	"fmt"
 	"log"
 	"net"
+	"net/http"
 	"strings"
-	"sync"
 	"time"
 
-	"github.com/gorilla/websocket"
+	"golang.org/x/net/http2"
 )
 
 func doClient(l net.Listener, server string, tlsConfig *tls.Config, wss bool, path string, timeout time.Duration, vpnMode, tfo bool) error {
@@ -35,21 +36,35 @@ func doClient(l net.Listener, server string, tlsConfig *tls.Config, wss bool, pa
 		Control: getControlFunc(&tcpConfig{vpnMode: vpnMode, tfo: tfo}),
 	}
 
-	wsDialer := &websocket.Dialer{
-		TLSClientConfig: tlsConfig,
-		NetDial: func(network, _ string) (net.Conn, error) {
-			// overwrite url host addr
-			return dialer.Dial(network, server)
-		},
-		WriteBufferPool:  &sync.Pool{},
-		HandshakeTimeout: time.Second * 8,
-	}
+	var httpClient *http.Client
+	var url string
+	if wss {
+		transport := &http.Transport{
+			DialContext: func(ctx context.Context, network, _ string) (net.Conn, error) {
+				return dialer.DialContext(ctx, network, server)
+			},
+			TLSClientConfig: tlsConfig,
 
-	if !strings.HasPrefix(path, "/") {
-		path = "/" + path
-	}
+			IdleConnTimeout:       time.Minute,
+			ResponseHeaderTimeout: time.Second * 10,
+			ForceAttemptHTTP2:     true,
+		}
 
-	url := "wss://" + tlsConfig.ServerName + path
+		err := http2.ConfigureTransport(transport) // enable http2
+		if err != nil {
+			return err
+		}
+
+		httpClient = &http.Client{
+			Transport: transport,
+		}
+
+		if !strings.HasPrefix(path, "/") {
+			path = "/" + path
+		}
+
+		url = "wss://" + tlsConfig.ServerName + path
+	}
 
 	for {
 		localConn, err := l.Accept()
@@ -62,7 +77,7 @@ func doClient(l net.Listener, server string, tlsConfig *tls.Config, wss bool, pa
 			var serverConn net.Conn
 
 			if wss {
-				serverWSSConn, err := dialWebsocketConn(wsDialer, url)
+				serverWSSConn, err := dialWebsocketConn(httpClient, url)
 				if err != nil {
 					log.Printf("ERROR: doClient: dialWebsocketConn: %v", err)
 					return

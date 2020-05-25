@@ -18,6 +18,7 @@
 package main
 
 import (
+	"context"
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
@@ -34,23 +35,22 @@ import (
 
 	mathRand "math/rand"
 
-	"github.com/gorilla/websocket"
+	"nhooyr.io/websocket"
 )
 
 func doServer(l net.Listener, tlsConfig *tls.Config, dst string, wss bool, path string, timeout time.Duration) error {
 	if wss {
 		httpMux := http.NewServeMux()
 		wsss := &wssServer{
-			upgrader: websocket.Upgrader{
-				HandshakeTimeout: time.Second * 8,
-				ReadBufferSize:   0,
-				WriteBufferSize:  0,
-			},
+			opt:     &websocket.AcceptOptions{CompressionMode: websocket.CompressionDisabled},
 			dst:     dst,
 			timeout: timeout,
 		}
 		httpMux.Handle(path, wsss)
-		err := http.Serve(tls.NewListener(l, tlsConfig), httpMux)
+
+		tc := tlsConfig.Clone()
+		tc.NextProtos = []string{"h2"}
+		err := http.Serve(tls.NewListener(l, tc), httpMux)
 		if err != nil {
 			return fmt.Errorf("http.Serve: %v", err)
 		}
@@ -90,20 +90,21 @@ func doServer(l net.Listener, tlsConfig *tls.Config, dst string, wss bool, path 
 }
 
 type wssServer struct {
-	upgrader websocket.Upgrader
-	dst      string
-	timeout  time.Duration
+	opt     *websocket.AcceptOptions
+	dst     string
+	timeout time.Duration
 }
 
 // ServeHTTP implements http.Handler interface
 func (s *wssServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	leftWSConn, err := s.upgrader.Upgrade(w, r, nil)
+
+	leftWSConn, err := websocket.Accept(w, r, s.opt)
 	if err != nil {
 		log.Printf("ERROR: ServeHTTP: %s, Upgrade: %v", r.RemoteAddr, err)
 		return
 	}
 
-	leftConn := wrapWebSocketConn(leftWSConn)
+	leftConn := websocket.NetConn(context.Background(), leftWSConn, websocket.MessageBinary)
 
 	dstConn, err := net.Dial("tcp", s.dst)
 	if err != nil {
@@ -113,7 +114,7 @@ func (s *wssServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	defer dstConn.Close()
 
 	if err := openTunnel(dstConn, leftConn, s.timeout); err != nil {
-		log.Printf(": ServeHTTP: %s: openTunnel: %v", r.RemoteAddr, err)
+		log.Printf("ServeHTTP: %s: openTunnel: %v", r.RemoteAddr, err)
 	}
 }
 
