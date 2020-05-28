@@ -46,7 +46,7 @@ func main() {
 	}()
 
 	var bindAddr, dstAddr, serverName, cca, cert, key, path string
-	var isServer, wss, tfo, vpn, genCert bool
+	var isServer, wss, sendRandomHeader, tfo, vpn, genCert bool
 	var cpu int
 	var timeout time.Duration
 	var timeoutFlag int
@@ -57,10 +57,11 @@ func main() {
 	commandLine.StringVar(&dstAddr, "d", "", "[Host:Port] destination address")
 	commandLine.BoolVar(&wss, "wss", false, "using wss protocol")
 	commandLine.StringVar(&path, "path", "/", "[path] wss path")
+	commandLine.BoolVar(&sendRandomHeader, "rh", false, "add a random header to every connection to against traffic analysis")
 
 	// client only
 	commandLine.StringVar(&serverName, "n", "", "server name")
-	commandLine.StringVar(&cca, "cca", "", "PEM encoded CA in base64 format without padding characters, client will use it to varify the server")
+	commandLine.StringVar(&cca, "cca", "", "base64 encoded PEM CA. Client will use it to varify the server")
 
 	// server only
 	commandLine.BoolVar(&isServer, "s", false, "is server")
@@ -186,7 +187,7 @@ func main() {
 			log.Fatalf("main: net.Listen: %v", err)
 		}
 
-		err = doServer(l, tlsConfig, dstAddr, wss, path, timeout)
+		err = doServer(l, tlsConfig, dstAddr, wss, path, sendRandomHeader, timeout)
 		if err != nil {
 			log.Fatalf("main: doServer: %v", err)
 		}
@@ -195,10 +196,11 @@ func main() {
 		tlsConfig := new(tls.Config)
 		tlsConfig.ClientSessionCache = tls.NewLRUClientSessionCache(8)
 		tlsConfig.MinVersion = tls.VersionTLS13
+		var host string
 		if len(serverName) != 0 {
-			tlsConfig.ServerName = serverName
+			host = serverName
 		} else {
-			tlsConfig.ServerName = strings.SplitN(bindAddr, ":", 2)[0]
+			host = strings.SplitN(bindAddr, ":", 2)[0]
 		}
 		if len(cca) != 0 {
 			pem, err := base64.RawStdEncoding.DecodeString(cca)
@@ -219,7 +221,7 @@ func main() {
 			log.Fatalf("main: net.Listen: %v", err)
 		}
 
-		err = doClient(l, dstAddr, tlsConfig, wss, path, timeout, vpn, tfo)
+		err = doClient(l, dstAddr, host, tlsConfig, wss, path, sendRandomHeader, timeout, vpn, tfo)
 		if err != nil {
 			log.Fatalf("main: doServer: %v", err)
 		}

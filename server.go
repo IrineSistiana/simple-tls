@@ -38,7 +38,7 @@ import (
 	"nhooyr.io/websocket"
 )
 
-func doServer(l net.Listener, tlsConfig *tls.Config, dst string, wss bool, path string, timeout time.Duration) error {
+func doServer(l net.Listener, tlsConfig *tls.Config, dst string, wss bool, path string, sendRandomHeader bool, timeout time.Duration) error {
 	if wss {
 		httpMux := http.NewServeMux()
 		wsss := &wssServer{
@@ -73,15 +73,9 @@ func doServer(l net.Listener, tlsConfig *tls.Config, dst string, wss bool, path 
 				}
 				clientRawConn.SetDeadline(time.Time{})
 
-				dstConn, err := net.Dial("tcp", dst)
-				if err != nil {
-					log.Printf("ERROR: doServer: %s: net.Dial: %v", clientRawConn.RemoteAddr(), err)
+				if err := handleClientConn(clientTLSConn, sendRandomHeader, dst, timeout); err != nil {
+					log.Printf("ERROR: doServer: %s, handleClientConn: %v", clientRawConn.RemoteAddr(), err)
 					return
-				}
-				defer dstConn.Close()
-
-				if err := openTunnel(dstConn, clientTLSConn, timeout); err != nil {
-					log.Printf("ERROR: doServer: %s: openTunnel: %v", clientRawConn.RemoteAddr(), err)
 				}
 			}()
 		}
@@ -89,32 +83,49 @@ func doServer(l net.Listener, tlsConfig *tls.Config, dst string, wss bool, path 
 	return nil
 }
 
+func handleClientConn(cc net.Conn, sendRandomHeader bool, dst string, timeout time.Duration) (err error) {
+
+	// in server, write the random header ASAP to against timing analysis
+	if sendRandomHeader {
+		if err := readRandomHeaderFrom(cc); err != nil {
+			return err
+		}
+		if err := writeRandomHeaderTo(cc); err != nil {
+			return err
+		}
+	}
+
+	dstConn, err := net.Dial("tcp", dst)
+	if err != nil {
+		return fmt.Errorf("net.Dial: %v", err)
+	}
+	defer dstConn.Close()
+
+	if err := openTunnel(dstConn, cc, timeout); err != nil {
+		return fmt.Errorf("openTunnel: %v", err)
+	}
+	return nil
+}
+
 type wssServer struct {
-	opt     *websocket.AcceptOptions
-	dst     string
-	timeout time.Duration
+	sendRandomHeader bool
+	opt              *websocket.AcceptOptions
+	dst              string
+	timeout          time.Duration
 }
 
 // ServeHTTP implements http.Handler interface
 func (s *wssServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-
-	leftWSConn, err := websocket.Accept(w, r, s.opt)
+	clientWSConn, err := websocket.Accept(w, r, s.opt)
 	if err != nil {
 		log.Printf("ERROR: ServeHTTP: %s, Upgrade: %v", r.RemoteAddr, err)
 		return
 	}
+	clientWSNetConn := websocket.NetConn(context.Background(), clientWSConn, websocket.MessageBinary)
 
-	leftConn := websocket.NetConn(context.Background(), leftWSConn, websocket.MessageBinary)
-
-	dstConn, err := net.Dial("tcp", s.dst)
-	if err != nil {
-		log.Printf("ERROR: ServeHTTP: %s: net.Dial: %v", r.RemoteAddr, err)
+	if err := handleClientConn(clientWSNetConn, s.sendRandomHeader, s.dst, s.timeout); err != nil {
+		log.Printf("ERROR: ServeHTTP: %s, handleClientConn: %v", r.RemoteAddr, err)
 		return
-	}
-	defer dstConn.Close()
-
-	if err := openTunnel(dstConn, leftConn, s.timeout); err != nil {
-		log.Printf("ServeHTTP: %s: openTunnel: %v", r.RemoteAddr, err)
 	}
 }
 

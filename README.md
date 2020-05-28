@@ -29,6 +29,8 @@ Download here: [release](https://github.com/IrineSistiana/simple-tls/releases)
         Use Websocket Secure protocol
     -path string
         Websocket path
+    -rh 
+        Add a random header(512b~16Kb) to every connection to against traffic analysis
 
     # Run as a client
     -n string

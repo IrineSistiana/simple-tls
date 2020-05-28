@@ -30,18 +30,21 @@ import (
 	"golang.org/x/net/http2"
 )
 
-func doClient(l net.Listener, server string, tlsConfig *tls.Config, wss bool, path string, timeout time.Duration, vpnMode, tfo bool) error {
+func doClient(l net.Listener, serverAddr, hostName string, tlsConfig *tls.Config, wss bool, path string, sendRandomHeader bool, timeout time.Duration, vpnMode, tfo bool) error {
 	dialer := net.Dialer{
 		Timeout: time.Second * 5,
 		Control: getControlFunc(&tcpConfig{vpnMode: vpnMode, tfo: tfo}),
 	}
+	tlsConfig = tlsConfig.Clone()
+	tlsConfig.ServerName = hostName
 
 	var httpClient *http.Client
 	var url string
 	if wss {
+
 		transport := &http.Transport{
 			DialContext: func(ctx context.Context, network, _ string) (net.Conn, error) {
-				return dialer.DialContext(ctx, network, server)
+				return dialer.DialContext(ctx, network, serverAddr)
 			},
 			TLSClientConfig: tlsConfig,
 
@@ -63,7 +66,7 @@ func doClient(l net.Listener, server string, tlsConfig *tls.Config, wss bool, pa
 			path = "/" + path
 		}
 
-		url = "wss://" + tlsConfig.ServerName + path
+		url = "wss://" + hostName + path
 	}
 
 	for {
@@ -86,7 +89,7 @@ func doClient(l net.Listener, server string, tlsConfig *tls.Config, wss bool, pa
 
 				serverConn = serverWSSConn
 			} else {
-				serverRawConn, err := dialer.Dial("tcp", server)
+				serverRawConn, err := dialer.Dial("tcp", serverAddr)
 				if err != nil {
 					log.Printf("ERROR: doClient: dialer.Dial: %v", err)
 					return
@@ -101,6 +104,10 @@ func doClient(l net.Listener, server string, tlsConfig *tls.Config, wss bool, pa
 				}
 
 				serverConn = serverTLSConn
+			}
+
+			if sendRandomHeader {
+				serverConn = &readRandomHeaderConn{Conn: serverConn}
 			}
 
 			if err := openTunnel(localConn, serverConn, timeout); err != nil {
