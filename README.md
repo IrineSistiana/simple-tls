@@ -4,9 +4,10 @@ Probably the simplest tls/wss plugin.
 
 It can:
 
-- Protect your connections with real TLS1.3(not just obfuscating).
-- Transfer your data via CDN. (optional)
+- Protect your connections with real TLS1.3 (not just obfuscating).
 - Run as a SIP003 plugin and run on Android platform.
+- Add a random header to every connection to against traffic analysis. (optional)
+- Transfer your data via CDN. (optional)
 
 ---
 
@@ -36,7 +37,7 @@ Download here: [release](https://github.com/IrineSistiana/simple-tls/releases)
     -n string
         Server certificate name
     -cca string
-        A base64 encoded PEM CA certificate, used to verify the identity of the server.
+        A base64 encoded PEM CA certificate. Used to verify the identity of the server.
 
     # Run as a server
     -s    
@@ -44,7 +45,7 @@ Download here: [release](https://github.com/IrineSistiana/simple-tls/releases)
     -cert string
         [Path] PEM certificate
     -key string
-        [Path] PEM ket
+        [Path] PEM key
 
     # Other geek's arguments
     -gen-cert
@@ -54,11 +55,11 @@ Download here: [release](https://github.com/IrineSistiana/simple-tls/releases)
         e.g. -gen-cert -n example.com -key ./example.com.key -cert ./example.com.cert
 
     -cpu int
-        the maximum number of CPUs that can be executing simultaneously
+        The maximum number of CPUs that can be executing simultaneously
     -fast-open
-        enable tfo, only available on linux 4.11+
+        Enable tfo, only available on linux kernel 4.11+
     -t int
-        timeout after sec (default 300)
+        Idle timeout in sec (default 300)
 
 ## Standalone mode
 
@@ -93,11 +94,14 @@ For your safety, the server certificate verification in simple-tls **can't be di
 
 In the test environment, you can use `-gen-cert` in server to quickly generate an ECC certificate, and use `-cca` in the client to import its cert as CA.
 
+## Tips for speed and stability
+
 Considering that the TLS1.3 layer is sufficiently secure, a simple encryption can be used in lower-layer connections to increase speed.
 
-## Tips for wss 
+In Linux system, decrease your tcp r/w memory by using `sysctl` to improve stability.
 
-Enable `-wss` if you want to transfer data in HTTP protocol. e.g. transfer data via CDN.
+    sudo sysctl net.ipv4.tcp_rmem="4096 87380 1048576"
+    sudo sysctl net.ipv4.tcp_wmem="4096 16384 1048576"
 
 ---
 
