@@ -24,6 +24,7 @@ import (
 	"math/rand"
 	"net"
 	"sync"
+	"time"
 )
 
 var (
@@ -35,23 +36,50 @@ const (
 	maxHeaderSize = 16 * 1024 // 16Kb
 
 	headerSizeWindows = maxHeaderSize - minHeaderSize
+
+	expiredAfter = time.Minute * 30
 )
 
 var randomHeaderPool = sync.Pool{
 	New: func() interface{} {
 		rh := new(randomHeader)
 		rand.Read(rh.buf[:])
+		rh.expireTime = time.Now().Add(expiredAfter)
 		return rh
 	},
 }
 
+var randomHeaderPoolReadBuf = sync.Pool{
+	New: func() interface{} {
+		return new(randomHeader)
+	},
+}
+
 type randomHeader struct {
-	buf [2 + maxHeaderSize]byte
+	buf        [2 + maxHeaderSize]byte
+	expireTime time.Time
 }
 
 func getRandomHeader() *randomHeader {
 	rh := randomHeaderPool.Get().(*randomHeader)
+	if time.Now().After(rh.expireTime) {
+		rand.Read(rh.buf[:])
+		rh.expireTime = time.Now().Add(expiredAfter)
+	}
 	return rh
+}
+
+func releaseRandomHeader(rh *randomHeader) {
+	randomHeaderPool.Put(rh)
+}
+
+func getRandomHeaderAsReadBuf() *randomHeader {
+	rh := randomHeaderPoolReadBuf.Get().(*randomHeader)
+	return rh
+}
+
+func releaseRandomHeaderAsReadBuf(rh *randomHeader) {
+	randomHeaderPoolReadBuf.Put(rh)
 }
 
 func getRandomHeaderSize() int {
@@ -87,8 +115,8 @@ func (c *randomHeaderConn) Write(b []byte) (n int, err error) {
 }
 
 func readRandomHeaderFrom(c net.Conn) (err error) {
-	rh := randomHeaderPool.Get().(*randomHeader)
-	defer randomHeaderPool.Put(rh)
+	rh := getRandomHeaderAsReadBuf()
+	defer releaseRandomHeaderAsReadBuf(rh)
 
 	if _, err := io.ReadFull(c, rh.buf[:2]); err != nil {
 		return fmt.Errorf("failed to read random header size: %w", err)
@@ -110,8 +138,8 @@ func writeRandomHeaderTo(c net.Conn) (err error) {
 }
 
 func writeRandomHeaderToWithExtraData(c net.Conn, data []byte) (err error) {
-	rh := randomHeaderPool.Get().(*randomHeader)
-	defer randomHeaderPool.Put(rh)
+	rh := getRandomHeader()
+	defer releaseRandomHeader(rh)
 
 	headerSize := getRandomHeaderSize()
 	rh.buf[0] = byte(headerSize >> 8)
