@@ -49,9 +49,10 @@ func doServer(l net.Listener, certificates []tls.Certificate, dst string, wss bo
 	if wss {
 		httpMux := http.NewServeMux()
 		wsss := &wssServer{
-			opt:     &websocket.AcceptOptions{CompressionMode: websocket.CompressionDisabled},
-			dst:     dst,
-			timeout: timeout,
+			sendRandomHeader: sendRandomHeader,
+			opt:              &websocket.AcceptOptions{CompressionMode: websocket.CompressionDisabled},
+			dst:              dst,
+			timeout:          timeout,
 		}
 		httpMux.Handle(path, wsss)
 		err := http.Serve(tls.NewListener(l, tlsConfig), httpMux)
