@@ -169,8 +169,7 @@ func main() {
 	}
 
 	if isServer {
-		tlsConfig := new(tls.Config)
-		tlsConfig.MinVersion = tls.VersionTLS13
+		var certificates []tls.Certificate
 		if len(cert) == 0 || len(key) == 0 {
 			log.Fatal("main: server must have a X509 key pair, aka. -cert and -key")
 		} else {
@@ -178,7 +177,7 @@ func main() {
 			if err != nil {
 				log.Fatalf("main: LoadX509KeyPair: %v", err)
 			}
-			tlsConfig.Certificates = []tls.Certificate{cer}
+			certificates = []tls.Certificate{cer}
 		}
 
 		lc := net.ListenConfig{Control: getControlFunc(&tcpConfig{tfo: tfo})}
@@ -187,32 +186,29 @@ func main() {
 			log.Fatalf("main: net.Listen: %v", err)
 		}
 
-		err = doServer(l, tlsConfig, dstAddr, wss, path, sendRandomHeader, timeout)
+		err = doServer(l, certificates, dstAddr, wss, path, sendRandomHeader, timeout)
 		if err != nil {
 			log.Fatalf("main: doServer: %v", err)
 		}
 
 	} else { // do client
-		tlsConfig := new(tls.Config)
-		tlsConfig.ClientSessionCache = tls.NewLRUClientSessionCache(8)
-		tlsConfig.MinVersion = tls.VersionTLS13
 		var host string
 		if len(serverName) != 0 {
 			host = serverName
 		} else {
 			host = strings.SplitN(bindAddr, ":", 2)[0]
 		}
+		var rootCAs *x509.CertPool
 		if len(cca) != 0 {
 			pem, err := base64.RawStdEncoding.DecodeString(cca)
 			if err != nil {
 				log.Fatalf("main: base64.StdEncoding.DecodeString: %v", err)
 			}
 
-			rootCAs := x509.NewCertPool()
+			rootCAs = x509.NewCertPool()
 			if ok := rootCAs.AppendCertsFromPEM(pem); !ok {
 				log.Fatal("main: AppendCertsFromPEM failed, cca is invaild")
 			}
-			tlsConfig.RootCAs = rootCAs
 		}
 
 		lc := net.ListenConfig{}
@@ -221,7 +217,7 @@ func main() {
 			log.Fatalf("main: net.Listen: %v", err)
 		}
 
-		err = doClient(l, dstAddr, host, tlsConfig, wss, path, sendRandomHeader, timeout, vpn, tfo)
+		err = doClient(l, dstAddr, host, rootCAs, wss, path, sendRandomHeader, timeout, vpn, tfo)
 		if err != nil {
 			log.Fatalf("main: doServer: %v", err)
 		}

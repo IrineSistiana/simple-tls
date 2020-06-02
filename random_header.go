@@ -58,12 +58,12 @@ func getRandomHeaderSize() int {
 	return minHeaderSize + rand.Intn(headerSizeWindows)
 }
 
-type readRandomHeaderConn struct {
+type randomHeaderConn struct {
 	net.Conn
 	readDone, writeDone bool
 }
 
-func (c *readRandomHeaderConn) Read(b []byte) (n int, err error) {
+func (c *randomHeaderConn) Read(b []byte) (n int, err error) {
 	if !c.readDone {
 		err := readRandomHeaderFrom(c.Conn)
 		if err != nil {
@@ -74,7 +74,7 @@ func (c *readRandomHeaderConn) Read(b []byte) (n int, err error) {
 	return c.Conn.Read(b)
 }
 
-func (c *readRandomHeaderConn) Write(b []byte) (n int, err error) {
+func (c *randomHeaderConn) Write(b []byte) (n int, err error) {
 	if !c.writeDone {
 		err := writeRandomHeaderToWithExtraData(c.Conn, b)
 		if err != nil {

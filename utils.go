@@ -19,14 +19,22 @@ package main
 
 import (
 	"crypto/tls"
+	"errors"
 	"time"
 )
 
-func tlsHandshakeTimeout(c *tls.Conn, timeout time.Duration) error {
+var (
+	errNotTLS13 = errors.New("not a tls 1.3 connection")
+)
+
+func tls13HandshakeWithTimeout(c *tls.Conn, timeout time.Duration) error {
 	c.SetDeadline(time.Now().Add(timeout))
 	if err := c.Handshake(); err != nil {
 		return err
 	}
 	c.SetDeadline(time.Time{})
+	if c.ConnectionState().Version != tls.VersionTLS13 {
+		return errNotTLS13
+	}
 	return nil
 }

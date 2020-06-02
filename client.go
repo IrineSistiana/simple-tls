@@ -20,6 +20,7 @@ package main
 import (
 	"context"
 	"crypto/tls"
+	"crypto/x509"
 	"fmt"
 	"log"
 	"net"
@@ -30,24 +31,33 @@ import (
 	"golang.org/x/net/http2"
 )
 
-func doClient(l net.Listener, serverAddr, hostName string, tlsConfig *tls.Config, wss bool, path string, sendRandomHeader bool, timeout time.Duration, vpnMode, tfo bool) error {
+func doClient(l net.Listener, serverAddr, hostName string, caPool *x509.CertPool, wss bool, path string, sendRandomHeader bool, timeout time.Duration, vpnMode, tfo bool) error {
 	dialer := net.Dialer{
 		Timeout: time.Second * 5,
 		Control: getControlFunc(&tcpConfig{vpnMode: vpnMode, tfo: tfo}),
 	}
-	tlsConfig = tlsConfig.Clone()
+	tlsConfig := new(tls.Config)
+	tlsConfig.ClientSessionCache = tls.NewLRUClientSessionCache(64)
 	tlsConfig.ServerName = hostName
+	tlsConfig.RootCAs = caPool
 
 	var httpClient *http.Client
 	var url string
 	if wss {
-
 		transport := &http.Transport{
-			DialContext: func(ctx context.Context, network, _ string) (net.Conn, error) {
-				return dialer.DialContext(ctx, network, serverAddr)
+			DialTLSContext: func(ctx context.Context, network, _ string) (net.Conn, error) {
+				conn, err := dialer.DialContext(ctx, network, serverAddr)
+				if err != nil {
+					return nil, err
+				}
+				tlsConn := tls.Client(conn, tlsConfig)
+				err = tls13HandshakeWithTimeout(tlsConn, time.Second*5)
+				if err != nil {
+					conn.Close()
+					return nil, err
+				}
+				return tlsConn, nil
 			},
-			TLSClientConfig: tlsConfig,
-
 			IdleConnTimeout:       time.Minute,
 			ResponseHeaderTimeout: time.Second * 10,
 			ForceAttemptHTTP2:     true,
@@ -97,8 +107,7 @@ func doClient(l net.Listener, serverAddr, hostName string, tlsConfig *tls.Config
 				defer serverRawConn.Close()
 
 				serverTLSConn := tls.Client(serverRawConn, tlsConfig)
-
-				if err := tlsHandshakeTimeout(serverTLSConn, time.Second*5); err != nil {
+				if err := tls13HandshakeWithTimeout(serverTLSConn, time.Second*5); err != nil {
 					log.Printf("ERROR: doClient: tlsHandshakeTimeout: %v", err)
 					return
 				}
@@ -107,7 +116,7 @@ func doClient(l net.Listener, serverAddr, hostName string, tlsConfig *tls.Config
 			}
 
 			if sendRandomHeader {
-				serverConn = &readRandomHeaderConn{Conn: serverConn}
+				serverConn = &randomHeaderConn{Conn: serverConn}
 			}
 
 			if err := openTunnel(localConn, serverConn, timeout); err != nil {

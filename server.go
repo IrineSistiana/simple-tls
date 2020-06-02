@@ -38,7 +38,14 @@ import (
 	"nhooyr.io/websocket"
 )
 
-func doServer(l net.Listener, tlsConfig *tls.Config, dst string, wss bool, path string, sendRandomHeader bool, timeout time.Duration) error {
+func doServer(l net.Listener, certificates []tls.Certificate, dst string, wss bool, path string, sendRandomHeader bool, timeout time.Duration) error {
+
+	tlsConfig := new(tls.Config)
+	tlsConfig.MinVersion = tls.VersionTLS13
+	tlsConfig.NextProtos = []string{"h2"}
+	tlsConfig.Certificates = certificates
+	tlsConfig.MinVersion = tls.VersionTLS13
+
 	if wss {
 		httpMux := http.NewServeMux()
 		wsss := &wssServer{
@@ -47,10 +54,7 @@ func doServer(l net.Listener, tlsConfig *tls.Config, dst string, wss bool, path 
 			timeout: timeout,
 		}
 		httpMux.Handle(path, wsss)
-
-		tc := tlsConfig.Clone()
-		tc.NextProtos = []string{"h2"}
-		err := http.Serve(tls.NewListener(l, tc), httpMux)
+		err := http.Serve(tls.NewListener(l, tlsConfig), httpMux)
 		if err != nil {
 			return fmt.Errorf("http.Serve: %v", err)
 		}
@@ -62,16 +66,14 @@ func doServer(l net.Listener, tlsConfig *tls.Config, dst string, wss bool, path 
 			}
 
 			go func() {
-				defer clientRawConn.Close()
 				clientTLSConn := tls.Server(clientRawConn, tlsConfig)
+				defer clientTLSConn.Close()
 
-				// check client conn before dial dst
-				clientRawConn.SetDeadline(time.Now().Add(time.Second * 5))
-				if err := clientTLSConn.Handshake(); err != nil {
-					log.Printf("ERROR: doServer: %s, clientTLSConn.Handshake: %v", clientRawConn.RemoteAddr(), err)
+				// check client conn before dialing dst
+				if err := tls13HandshakeWithTimeout(clientTLSConn, time.Second*5); err != nil {
+					log.Printf("ERROR: doServer: %s, tls13HandshakeWithTimeout: %v", clientRawConn.RemoteAddr(), err)
 					return
 				}
-				clientRawConn.SetDeadline(time.Time{})
 
 				if err := handleClientConn(clientTLSConn, sendRandomHeader, dst, timeout); err != nil {
 					log.Printf("ERROR: doServer: %s, handleClientConn: %v", clientRawConn.RemoteAddr(), err)

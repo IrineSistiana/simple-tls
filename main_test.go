@@ -20,6 +20,7 @@ package main
 import (
 	"bytes"
 	"crypto/tls"
+	"crypto/x509"
 	"io"
 	"log"
 	"math/rand"
@@ -70,20 +71,19 @@ func Test_main(t *testing.T) {
 	// test1
 	test := func(wss bool, path string, sendRandomHeader bool) {
 		// start server
-		_, keyPEM, certPEM, err := generateCertificate("")
+		_, keyPEM, certPEM, err := generateCertificate("example.com")
 		cert, err := tls.X509KeyPair(certPEM, keyPEM)
 		if err != nil {
 			t.Fatal(err)
 		}
-		serverTLSConfig := new(tls.Config)
-		serverTLSConfig.Certificates = []tls.Certificate{cert}
+
 		serverListener, err := net.Listen("tcp", "127.0.0.1:0")
 		if err != nil {
 			t.Fatal(err)
 		}
 		defer serverListener.Close()
 
-		go doServer(serverListener, serverTLSConfig, echoListener.Addr().String(), wss, path, sendRandomHeader, timeout)
+		go doServer(serverListener, []tls.Certificate{cert}, echoListener.Addr().String(), wss, path, sendRandomHeader, timeout)
 
 		// start client
 		clientListener, err := net.Listen("tcp", "127.0.0.1:0")
@@ -92,10 +92,13 @@ func Test_main(t *testing.T) {
 		}
 		defer clientListener.Close()
 
-		clientTLSConfig := new(tls.Config)
-		clientTLSConfig.InsecureSkipVerify = true
+		caPool := x509.NewCertPool()
+		ok := caPool.AppendCertsFromPEM(certPEM)
+		if !ok {
+			t.Fatal("appendCertsFromPEM failed")
+		}
 
-		go doClient(clientListener, serverListener.Addr().String(), "example.com", clientTLSConfig, wss, path, sendRandomHeader, timeout, false, false)
+		go doClient(clientListener, serverListener.Addr().String(), "example.com", caPool, wss, path, sendRandomHeader, timeout, false, false)
 
 		log.Printf("echo: %v, server: %v client: %v", echoListener.Addr(), serverListener.Addr(), clientListener.Addr())
 		conn, err := net.Dial("tcp", clientListener.Addr().String())
