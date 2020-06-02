@@ -200,7 +200,7 @@ func main() {
 		}
 		var rootCAs *x509.CertPool
 		if len(cca) != 0 {
-			cca = strings.TrimSuffix(cca, "=")
+			cca = strings.TrimRight(cca, "=")
 			pem, err := base64.RawStdEncoding.DecodeString(cca)
 			if err != nil {
 				log.Fatalf("main: base64.RawStdEncoding.DecodeString: %v", err)
