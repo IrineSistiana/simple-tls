@@ -89,14 +89,16 @@ func doServer(l net.Listener, certificates []tls.Certificate, dst string, wss bo
 func handleClientConn(cc net.Conn, sendRandomHeader bool, dst string, timeout time.Duration) (err error) {
 
 	// in server, write the random header ASAP to against timing analysis
+	cc.SetDeadline(time.Now().Add(time.Second * 10))
 	if sendRandomHeader {
 		if err := readRandomHeaderFrom(cc); err != nil {
-			return err
+			return fmt.Errorf("readRandomHeaderFrom: %v", err)
 		}
 		if err := writeRandomHeaderTo(cc); err != nil {
-			return err
+			return fmt.Errorf("writeRandomHeaderTo: %v", err)
 		}
 	}
+	cc.SetDeadline(time.Time{})
 
 	dstConn, err := net.Dial("tcp", dst)
 	if err != nil {

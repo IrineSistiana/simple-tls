@@ -76,7 +76,9 @@ func doClient(l net.Listener, serverAddr, hostName string, caPool *x509.CertPool
 			path = "/" + path
 		}
 
-		url = "wss://" + hostName + path
+		_, portStr, _ := net.SplitHostPort(serverAddr)
+
+		url = "wss://" + hostName + ":" + portStr + path
 	}
 
 	for {

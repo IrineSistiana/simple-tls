@@ -200,9 +200,10 @@ func main() {
 		}
 		var rootCAs *x509.CertPool
 		if len(cca) != 0 {
+			cca = strings.TrimSuffix(cca, "=")
 			pem, err := base64.RawStdEncoding.DecodeString(cca)
 			if err != nil {
-				log.Fatalf("main: base64.StdEncoding.DecodeString: %v", err)
+				log.Fatalf("main: base64.RawStdEncoding.DecodeString: %v", err)
 			}
 
 			rootCAs = x509.NewCertPool()

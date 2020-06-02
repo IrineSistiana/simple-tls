@@ -108,7 +108,7 @@ func Test_main(t *testing.T) {
 		data := randData()
 		buf := make([]byte, dataSize)
 
-		for i := 0; i < 100; i++ {
+		for i := 0; i < 10; i++ {
 			_, err = conn.Write(data)
 			if err != nil {
 				t.Fatal(err)
@@ -125,14 +125,18 @@ func Test_main(t *testing.T) {
 	}
 
 	// test tls
+	t.Log("testing tls")
 	test(false, "", false)
 
 	// test wss
+	t.Log("testing wss")
 	test(true, "/", false)
 
 	// test tls with random header
+	t.Log("testing tls with random header")
 	test(false, "", true)
 
 	// test wss with random header
+	t.Log("testing wss with random header")
 	test(true, "/", true)
 }
