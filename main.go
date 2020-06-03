@@ -24,6 +24,7 @@ import (
 	"encoding/base64"
 	"flag"
 	"fmt"
+	"io/ioutil"
 	"log"
 	"net"
 	"os"
@@ -45,7 +46,7 @@ func main() {
 		os.Exit(0)
 	}()
 
-	var bindAddr, dstAddr, serverName, cca, cert, key, path string
+	var bindAddr, dstAddr, serverName, cca, ca, cert, key, path string
 	var isServer, wss, sendRandomHeader, tfo, vpn, genCert bool
 	var cpu int
 	var timeout time.Duration
@@ -61,7 +62,8 @@ func main() {
 
 	// client only
 	commandLine.StringVar(&serverName, "n", "", "server name")
-	commandLine.StringVar(&cca, "cca", "", "base64 encoded PEM CA. Client will use it to varify the server")
+	commandLine.StringVar(&ca, "ca", "", "PEM CA file path")
+	commandLine.StringVar(&cca, "cca", "", "base64 encoded PEM CA")
 
 	// server only
 	commandLine.BoolVar(&isServer, "s", false, "is server")
@@ -199,7 +201,9 @@ func main() {
 			host = strings.SplitN(bindAddr, ":", 2)[0]
 		}
 		var rootCAs *x509.CertPool
-		if len(cca) != 0 {
+
+		switch {
+		case len(cca) != 0:
 			cca = strings.TrimRight(cca, "=")
 			pem, err := base64.RawStdEncoding.DecodeString(cca)
 			if err != nil {
@@ -209,6 +213,15 @@ func main() {
 			rootCAs = x509.NewCertPool()
 			if ok := rootCAs.AppendCertsFromPEM(pem); !ok {
 				log.Fatal("main: AppendCertsFromPEM failed, cca is invaild")
+			}
+		case len(ca) != 0:
+			rootCAs = x509.NewCertPool()
+			certPEMBlock, err := ioutil.ReadFile(ca)
+			if err != nil {
+				log.Fatalf("main: ReadFile ca [%s], %v", ca, err)
+			}
+			if ok := rootCAs.AppendCertsFromPEM(certPEMBlock); !ok {
+				log.Fatal("main: AppendCertsFromPEM failed, ca is invaild")
 			}
 		}
 

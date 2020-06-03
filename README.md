@@ -36,8 +36,10 @@ Download here: [release](https://github.com/IrineSistiana/simple-tls/releases)
     # Run as a client
     -n string
         Server certificate name
+    -ca string
+        PEM CA file path. [This imports a file]
     -cca string
-        A base64 encoded PEM CA certificate. Used to verify the identity of the server.
+        A base64 encoded PEM CA certificate. [This imports a base64 string]
 
     # Run as a server
     -s    
@@ -90,9 +92,9 @@ Take [shadowsocks-libev](https://github.com/shadowsocks/shadowsocks-libev) as an
 
 To start a server, the argument `-key` and `-cert` are required. Because simple-tls needs a certificate to establish real TLS1.3 connections.
 
-For your safety, the server certificate verification in simple-tls **can't be disabled**. You need to use `-cca` argument to import the CA certificate in the client if you are using a self-signed certificate in server.
+For your safety, the server certificate verification in simple-tls **can't be disabled**. You need to use `-cca` or `-ca` argument to import the CA certificate in the client if you are using a self-signed certificate in server.
 
-In the test environment, you can use `-gen-cert` in server to quickly generate an ECC certificate, and use `-cca` in the client to import its cert as CA.
+In the test environment, you can use `-gen-cert` in server to quickly generate an ECC certificate, and use `-cca` or `-ca` in the client to import its cert as CA.
 
 ## Tips for speed and stability
 
