@@ -45,9 +45,9 @@ Download here: [release](https://github.com/IrineSistiana/simple-tls/releases)
     -s    
         Run as a server
     -cert string
-        [Path] PEM certificate
+        PEM certificate file path
     -key string
-        [Path] PEM key
+        PEM key file path
 
     # Other geek's arguments
     -gen-cert
@@ -86,9 +86,9 @@ Take [shadowsocks-libev](https://github.com/shadowsocks/shadowsocks-libev) as an
 
 ## Android
 
-`simple-tls-android` is a plugin for [shadowsocks-android](https://github.com/shadowsocks/shadowsocks-android). You need to download and install shadowsocks-android first.
+`simple-tls-android` is a plugin for [shadowsocks-android](https://github.com/shadowsocks/shadowsocks-android). You need to download and install shadowsocks-android first. It's [open-source](https://github.com/IrineSistiana/simple-tls-android).
 
-## Tips for certificate and -cca argument
+## Tips for certificate and -cca/-ca argument
 
 To start a server, the argument `-key` and `-cert` are required. Because simple-tls needs a certificate to establish real TLS1.3 connections.
 
