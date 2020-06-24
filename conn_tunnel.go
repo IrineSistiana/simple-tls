@@ -21,7 +21,6 @@ import (
 	"io"
 	"net"
 	"sync"
-	"sync/atomic"
 	"time"
 )
 
@@ -41,24 +40,19 @@ func releaseIOBuf(b []byte) {
 
 type firstErr struct {
 	reportrOnce sync.Once
-	err         atomic.Value
+	err         error
 }
 
 func (fe *firstErr) report(err error) {
 	fe.reportrOnce.Do(func() {
-		// atomic.Value can't store nil value
 		if err != nil {
-			fe.err.Store(err)
+			fe.err = err
 		}
 	})
 }
 
 func (fe *firstErr) getErr() error {
-	v := fe.err.Load()
-	if err, ok := v.(error); ok {
-		return err
-	}
-	return nil
+	return fe.err
 }
 
 // openTunnel opens a tunnel between a and b, if any end
