@@ -80,7 +80,7 @@ read:
 	if c.currentFrame == headerNil {
 		t, l, err := c.readHeader() // new frame
 		if err != nil {
-			return 0, fmt.Errorf("failed to read header, %w", err)
+			return 0, err
 		}
 		c.currentFrame = t
 		c.frameLeft = l
@@ -174,31 +174,7 @@ func (c *paddingConn) writePadding(l uint16) (n int, err error) {
 	return c.Conn.Write(c.wBuf[:3+n1])
 }
 
-type paddingBoundConn struct {
-	net.Conn
-	pc *paddingConn
-
-	rl       sync.Mutex
-	lastRead time.Time
-}
-
 // defaultGetPaddingSize returns a random num between 4 ~ 16
 func defaultGetPaddingSize() uint16 {
 	return 4 + uint16(rand.Int31n(12))
-}
-
-func boundPaddingConn(c net.Conn, pc *paddingConn) *paddingBoundConn {
-	return &paddingBoundConn{Conn: c, pc: pc}
-}
-
-func (c *paddingBoundConn) Read(b []byte) (n int, err error) {
-	c.rl.Lock()
-	defer c.rl.Unlock()
-
-	n, err = c.Conn.Read(b)
-
-	if n > 0 && time.Since(c.lastRead) > paddingIntervalThreshold {
-		c.pc.writePadding(defaultGetPaddingSize())
-	}
-	return n, err
 }
