@@ -47,7 +47,7 @@ func main() {
 	}()
 
 	var bindAddr, dstAddr, serverName, cca, ca, cert, key string
-	var insecureSkipVerify, isServer, sendPaddingData, tfo, vpn, genCert bool
+	var insecureSkipVerify, isServer, sendPaddingData, tfo, vpn, genCert, showVersion bool
 	var cpu int
 	var timeout time.Duration
 	var timeoutFlag int
@@ -75,6 +75,7 @@ func main() {
 	commandLine.IntVar(&cpu, "cpu", runtime.NumCPU(), "the maximum number of CPUs that can be executing simultaneously")
 
 	commandLine.BoolVar(&genCert, "gen-cert", false, "[This is a helper function]: generate a certificate, store it's key to [-key] and cert to [-cert], print cert in base64 format without padding characters")
+	commandLine.BoolVar(&showVersion, "v", false, "output version info and exit")
 
 	sip003Args, err := GetSIP003Args()
 	if err != nil {
@@ -109,6 +110,11 @@ func main() {
 		if err != nil {
 			log.Fatalf("main: commandLine.Parse: %v", err)
 		}
+	}
+
+	// display version
+	if showVersion {
+		println(version)
 	}
 
 	// gen cert
