@@ -88,7 +88,14 @@ Take [shadowsocks-libev](https://github.com/shadowsocks/shadowsocks-libev) as an
 
 ## Android
 
-`simple-tls-android` is a plugin for [shadowsocks-android](https://github.com/shadowsocks/shadowsocks-android). You need to download and install shadowsocks-android first. It's [open-source](https://github.com/IrineSistiana/simple-tls-android).
+`simple-tls-android` is a GUI plugin for [shadowsocks-android](https://github.com/shadowsocks/shadowsocks-android). You need to download and install shadowsocks-android first. It's also an open source software. Source code is available at [here](https://github.com/IrineSistiana/simple-tls-android).
+
+<details><summary><code>Screenshot</code></summary><br>
+
+![avatar](/assets/simple-tls-android-screenshot.jpg)
+
+</details>
+
 
 ## More tips
 
