@@ -46,8 +46,8 @@ func main() {
 		os.Exit(0)
 	}()
 
-	var bindAddr, dstAddr, serverName, cca, ca, cert, key, path string
-	var isServer, wss, sendRandomHeader, tfo, vpn, genCert bool
+	var bindAddr, dstAddr, serverName, cca, ca, cert, key string
+	var isServer, sendPaddingData, tfo, vpn, genCert bool
 	var cpu int
 	var timeout time.Duration
 	var timeoutFlag int
@@ -56,9 +56,7 @@ func main() {
 
 	commandLine.StringVar(&bindAddr, "b", "", "[Host:Port] bind address")
 	commandLine.StringVar(&dstAddr, "d", "", "[Host:Port] destination address")
-	commandLine.BoolVar(&wss, "wss", false, "using wss protocol")
-	commandLine.StringVar(&path, "path", "/", "[path] wss path")
-	commandLine.BoolVar(&sendRandomHeader, "rh", false, "add a random header to every connection to against traffic analysis")
+	commandLine.BoolVar(&sendPaddingData, "pd", false, "send padding data occasionally to against traffic analysis")
 
 	// client only
 	commandLine.StringVar(&serverName, "n", "", "server name")
@@ -188,7 +186,7 @@ func main() {
 			log.Fatalf("main: net.Listen: %v", err)
 		}
 
-		err = doServer(l, certificates, dstAddr, wss, path, sendRandomHeader, timeout)
+		err = doServer(l, certificates, dstAddr, sendPaddingData, timeout)
 		if err != nil {
 			log.Fatalf("main: doServer: %v", err)
 		}
@@ -231,7 +229,7 @@ func main() {
 			log.Fatalf("main: net.Listen: %v", err)
 		}
 
-		err = doClient(l, dstAddr, host, rootCAs, wss, path, sendRandomHeader, timeout, vpn, tfo)
+		err = doClient(l, dstAddr, host, rootCAs, sendPaddingData, timeout, vpn, tfo)
 		if err != nil {
 			log.Fatalf("main: doServer: %v", err)
 		}

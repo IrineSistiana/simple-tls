@@ -18,7 +18,6 @@
 package main
 
 import (
-	"context"
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
@@ -30,15 +29,12 @@ import (
 	"log"
 	"math/big"
 	"net"
-	"net/http"
 	"time"
 
 	mathRand "math/rand"
-
-	"nhooyr.io/websocket"
 )
 
-func doServer(l net.Listener, certificates []tls.Certificate, dst string, wss bool, path string, sendRandomHeader bool, timeout time.Duration) error {
+func doServer(l net.Listener, certificates []tls.Certificate, dst string, sendPaddingData bool, timeout time.Duration) error {
 
 	tlsConfig := new(tls.Config)
 	tlsConfig.MinVersion = tls.VersionTLS13
@@ -46,92 +42,45 @@ func doServer(l net.Listener, certificates []tls.Certificate, dst string, wss bo
 	tlsConfig.Certificates = certificates
 	tlsConfig.MinVersion = tls.VersionTLS13
 
-	if wss {
-		httpMux := http.NewServeMux()
-		wsss := &wssServer{
-			sendRandomHeader: sendRandomHeader,
-			opt:              &websocket.AcceptOptions{CompressionMode: websocket.CompressionDisabled},
-			dst:              dst,
-			timeout:          timeout,
-		}
-		httpMux.Handle(path, wsss)
-		err := http.Serve(tls.NewListener(l, tlsConfig), httpMux)
+	for {
+		clientRawConn, err := l.Accept()
 		if err != nil {
-			return fmt.Errorf("http.Serve: %v", err)
+			return fmt.Errorf("l.Accept(): %w", err)
 		}
-	} else {
-		for {
-			clientRawConn, err := l.Accept()
-			if err != nil {
-				return fmt.Errorf("l.Accept(): %w", err)
+
+		go func() {
+			clientTLSConn := tls.Server(clientRawConn, tlsConfig)
+			defer clientTLSConn.Close()
+
+			// check client conn before dialing dst
+			if err := tls13HandshakeWithTimeout(clientTLSConn, time.Second*5); err != nil {
+				log.Printf("ERROR: doServer: %s, tls13HandshakeWithTimeout: %v", clientRawConn.RemoteAddr(), err)
+				return
 			}
 
-			go func() {
-				clientTLSConn := tls.Server(clientRawConn, tlsConfig)
-				defer clientTLSConn.Close()
-
-				// check client conn before dialing dst
-				if err := tls13HandshakeWithTimeout(clientTLSConn, time.Second*5); err != nil {
-					log.Printf("ERROR: doServer: %s, tls13HandshakeWithTimeout: %v", clientRawConn.RemoteAddr(), err)
-					return
-				}
-
-				if err := handleClientConn(clientTLSConn, sendRandomHeader, dst, timeout); err != nil {
-					log.Printf("ERROR: doServer: %s, handleClientConn: %v", clientRawConn.RemoteAddr(), err)
-					return
-				}
-			}()
-		}
+			if err := handleClientConn(clientTLSConn, sendPaddingData, dst, timeout); err != nil {
+				log.Printf("ERROR: doServer: %s, handleClientConn: %v", clientRawConn.RemoteAddr(), err)
+				return
+			}
+		}()
 	}
-	return nil
 }
 
-func handleClientConn(cc net.Conn, sendRandomHeader bool, dst string, timeout time.Duration) (err error) {
-
-	// in server, write the random header ASAP to against timing analysis
-	cc.SetDeadline(time.Now().Add(time.Second * 10))
-	if sendRandomHeader {
-		if err := readRandomHeaderFrom(cc); err != nil {
-			return fmt.Errorf("readRandomHeaderFrom: %v", err)
-		}
-		if err := writeRandomHeaderTo(cc); err != nil {
-			return fmt.Errorf("writeRandomHeaderTo: %v", err)
-		}
-	}
-	cc.SetDeadline(time.Time{})
-
+func handleClientConn(cc net.Conn, sendPaddingData bool, dst string, timeout time.Duration) (err error) {
 	dstConn, err := net.Dial("tcp", dst)
 	if err != nil {
 		return fmt.Errorf("net.Dial: %v", err)
 	}
 	defer dstConn.Close()
 
+	if sendPaddingData {
+		cc = newPaddingConn(cc, false, true)
+	}
+
 	if err := openTunnel(dstConn, cc, timeout); err != nil {
 		return fmt.Errorf("openTunnel: %v", err)
 	}
 	return nil
-}
-
-type wssServer struct {
-	sendRandomHeader bool
-	opt              *websocket.AcceptOptions
-	dst              string
-	timeout          time.Duration
-}
-
-// ServeHTTP implements http.Handler interface
-func (s *wssServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	clientWSConn, err := websocket.Accept(w, r, s.opt)
-	if err != nil {
-		log.Printf("ERROR: ServeHTTP: %s, Upgrade: %v", r.RemoteAddr, err)
-		return
-	}
-	clientWSNetConn := websocket.NetConn(context.Background(), clientWSConn, websocket.MessageBinary)
-
-	if err := handleClientConn(clientWSNetConn, s.sendRandomHeader, s.dst, s.timeout); err != nil {
-		log.Printf("ERROR: ServeHTTP: %s, handleClientConn: %v", r.RemoteAddr, err)
-		return
-	}
 }
 
 func generateCertificate(serverName string) (dnsName string, keyPEM, certPEM []byte, err error) {

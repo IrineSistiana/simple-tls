@@ -18,6 +18,7 @@
 package main
 
 import (
+	"fmt"
 	"io"
 	"net"
 	"sync"
@@ -90,21 +91,26 @@ func copyBuffer(dst net.Conn, src net.Conn, buf []byte, timeout time.Duration) (
 		panic("buf size <= 0")
 	}
 
-	ddlLastSet := time.Time{}
+	var lastPadding time.Time
 
 	for {
-		if time.Since(ddlLastSet) > time.Millisecond*500 {
-			now := time.Now()
-			ddlLastSet = now
-			src.SetDeadline(now.Add(timeout))
-		}
+		src.SetDeadline(time.Now().Add(timeout))
 		nr, er := src.Read(buf)
-		if nr > 0 {
-			if time.Since(ddlLastSet) > time.Millisecond*500 {
-				now := time.Now()
-				ddlLastSet = now
-				dst.SetDeadline(now.Add(timeout))
+
+		if ps, ok := src.(*paddingConn); ok {
+			if ps.writePaddingEnabled() && time.Since(lastPadding) > paddingIntervalThreshold { // time to pad
+				ps.SetDeadline(time.Now().Add(timeout))
+				_, err := ps.writePadding(defaultGetPaddingSize())
+				if err != nil {
+					return written, fmt.Errorf("write padding data: %v", err)
+				}
+
+				lastPadding = time.Now()
 			}
+		}
+
+		if nr > 0 {
+			dst.SetDeadline(time.Now().Add(timeout))
 			nw, ew := dst.Write(buf[0:nr])
 			if nw > 0 {
 				written += int64(nw)

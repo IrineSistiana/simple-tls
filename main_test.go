@@ -31,7 +31,7 @@ import (
 
 func Test_main(t *testing.T) {
 
-	dataSize := 16 * 1024
+	dataSize := 512 * 1024
 	randData := func() []byte {
 		b := make([]byte, dataSize)
 		rand.Read(b)
@@ -69,7 +69,7 @@ func Test_main(t *testing.T) {
 	}()
 
 	// test1
-	test := func(wss bool, path string, sendRandomHeader bool) {
+	test := func(sendPaddingData bool) {
 		// start server
 		_, keyPEM, certPEM, err := generateCertificate("example.com")
 		cert, err := tls.X509KeyPair(certPEM, keyPEM)
@@ -83,7 +83,7 @@ func Test_main(t *testing.T) {
 		}
 		defer serverListener.Close()
 
-		go doServer(serverListener, []tls.Certificate{cert}, echoListener.Addr().String(), wss, path, sendRandomHeader, timeout)
+		go doServer(serverListener, []tls.Certificate{cert}, echoListener.Addr().String(), sendPaddingData, timeout)
 
 		// start client
 		clientListener, err := net.Listen("tcp", "127.0.0.1:0")
@@ -98,7 +98,7 @@ func Test_main(t *testing.T) {
 			t.Fatal("appendCertsFromPEM failed")
 		}
 
-		go doClient(clientListener, serverListener.Addr().String(), "example.com", caPool, wss, path, sendRandomHeader, timeout, false, false)
+		go doClient(clientListener, serverListener.Addr().String(), "example.com", caPool, sendPaddingData, timeout, false, false)
 
 		log.Printf("echo: %v, server: %v client: %v", echoListener.Addr(), serverListener.Addr(), clientListener.Addr())
 		conn, err := net.Dial("tcp", clientListener.Addr().String())
@@ -126,17 +126,9 @@ func Test_main(t *testing.T) {
 
 	// test tls
 	t.Log("testing tls")
-	test(false, "", false)
-
-	// test wss
-	t.Log("testing wss")
-	test(true, "/", false)
+	test(false)
 
 	// test tls with random header
 	t.Log("testing tls with random header")
-	test(false, "", true)
-
-	// test wss with random header
-	t.Log("testing wss with random header")
-	test(true, "/", true)
+	test(true)
 }
