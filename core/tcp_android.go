@@ -17,7 +17,7 @@
 //     You should have received a copy of the GNU General Public License
 //     along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-package main
+package core
 
 import (
 	"log"
@@ -26,9 +26,9 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-func getControlFunc(conf *tcpConfig) func(network, address string, c syscall.RawConn) error {
+func GetControlFunc(conf *TcpConfig) func(network, address string, c syscall.RawConn) error {
 	return func(network, address string, c syscall.RawConn) error {
-		if conf.vpnMode {
+		if conf.AndroidVPN {
 			if err := c.Control(sendFdToBypass); err != nil {
 				return err
 			}

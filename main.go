@@ -33,10 +33,12 @@ import (
 	"strings"
 	"syscall"
 	"time"
+
+	"github.com/IrineSistiana/simple-tls/core"
 )
 
 func main() {
-	log.Print("main: simple-tls")
+	log.Printf("main: simple-tls %s", version)
 	go func() {
 		//wait signals
 		osSignals := make(chan os.Signal, 1)
@@ -77,7 +79,7 @@ func main() {
 	commandLine.BoolVar(&genCert, "gen-cert", false, "[This is a helper function]: generate a certificate, store it's key to [-key] and cert to [-cert], print cert in base64 format without padding characters")
 	commandLine.BoolVar(&showVersion, "v", false, "output version info and exit")
 
-	sip003Args, err := GetSIP003Args()
+	sip003Args, err := core.GetSIP003Args()
 	if err != nil {
 		log.Fatalf("main: sip003 error: %v", err)
 	}
@@ -86,7 +88,7 @@ func main() {
 	if sip003Args != nil {
 		log.Print("main: simple-tls is running as a sip003 plugin")
 
-		opts, err := FormatSSPluginOptions(sip003Args.SS_PLUGIN_OPTIONS)
+		opts, err := core.FormatSSPluginOptions(sip003Args.SS_PLUGIN_OPTIONS)
 		if err != nil {
 			log.Fatalf("main: invalid sip003 SS_PLUGIN_OPTIONS: %v", err)
 		}
@@ -119,9 +121,9 @@ func main() {
 
 	// gen cert
 	if genCert {
-		log.Print("main: WARNNING: generating PEM encoded key and cert")
+		log.Print("main: WARNING: generating PEM encoded key and cert")
 
-		dnsName, keyPEM, certPEM, err := generateCertificate(serverName)
+		dnsName, keyPEM, certPEM, err := core.GenerateCertificate(serverName)
 		if err != nil {
 			log.Fatalf("main: generateCertificate: %v", err)
 		}
@@ -182,7 +184,7 @@ func main() {
 		case len(cert) == 0 && len(key) == 0: // no cert and key
 			log.Printf("main: warnning: either -key nor -cert is been specificed")
 
-			dnsName, keyPEM, certPEM, err := generateCertificate(serverName)
+			dnsName, keyPEM, certPEM, err := core.GenerateCertificate(serverName)
 			if err != nil {
 				log.Fatalf("main: generateCertificate: %v", err)
 			}
@@ -202,13 +204,13 @@ func main() {
 			log.Fatal("main: server must have a X509 key pair, aka. -cert and -key")
 		}
 
-		lc := net.ListenConfig{Control: getControlFunc(&tcpConfig{tfo: tfo})}
+		lc := net.ListenConfig{Control: core.GetControlFunc(&core.TcpConfig{EnableTFO: tfo})}
 		l, err := lc.Listen(context.Background(), "tcp", bindAddr)
 		if err != nil {
 			log.Fatalf("main: net.Listen: %v", err)
 		}
 
-		err = doServer(l, certificates, dstAddr, sendPaddingData, timeout)
+		err = core.DoServer(l, certificates, dstAddr, sendPaddingData, timeout)
 		if err != nil {
 			log.Fatalf("main: doServer: %v", err)
 		}
@@ -251,7 +253,7 @@ func main() {
 			log.Fatalf("main: net.Listen: %v", err)
 		}
 
-		err = doClient(l, dstAddr, host, rootCAs, insecureSkipVerify, sendPaddingData, timeout, vpn, tfo)
+		err = core.DoClient(l, dstAddr, host, rootCAs, insecureSkipVerify, sendPaddingData, timeout, vpn, tfo)
 		if err != nil {
 			log.Fatalf("main: doServer: %v", err)
 		}

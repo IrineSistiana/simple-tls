@@ -1,4 +1,4 @@
-// +build !android,!linux,!windows
+// +build windows
 
 //     Copyright (C) 2020, IrineSistiana
 //
@@ -17,13 +17,12 @@
 //     You should have received a copy of the GNU General Public License
 //     along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-
-package main
+package core
 
 import (
 	"syscall"
 )
 
-func getControlFunc(conf *tcpConfig) func(network, address string, c syscall.RawConn) error {
-	return nil
+func GetControlFunc(conf *TcpConfig) func(network, address string, c syscall.RawConn) error {
+	return nil // nothing to do on windows @_@
 }
