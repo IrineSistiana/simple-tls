@@ -18,20 +18,15 @@
 package main
 
 import (
-	"context"
 	"crypto/tls"
 	"crypto/x509"
 	"fmt"
 	"log"
 	"net"
-	"net/http"
-	"strings"
 	"time"
-
-	"golang.org/x/net/http2"
 )
 
-func doClient(l net.Listener, serverAddr, hostName string, caPool *x509.CertPool, wss bool, path string, sendRandomHeader bool, timeout time.Duration, vpnMode, tfo bool) error {
+func doClient(l net.Listener, serverAddr, hostName string, caPool *x509.CertPool, sendPaddingData bool, timeout time.Duration, vpnMode, tfo bool) error {
 	dialer := net.Dialer{
 		Timeout: time.Second * 5,
 		Control: getControlFunc(&tcpConfig{vpnMode: vpnMode, tfo: tfo}),
@@ -41,45 +36,6 @@ func doClient(l net.Listener, serverAddr, hostName string, caPool *x509.CertPool
 	tlsConfig.ServerName = hostName
 	tlsConfig.RootCAs = caPool
 
-	var httpClient *http.Client
-	var url string
-	if wss {
-		transport := &http.Transport{
-			DialTLSContext: func(ctx context.Context, network, _ string) (net.Conn, error) {
-				conn, err := dialer.DialContext(ctx, network, serverAddr)
-				if err != nil {
-					return nil, err
-				}
-				tlsConn := tls.Client(conn, tlsConfig)
-				err = tls13HandshakeWithTimeout(tlsConn, time.Second*5)
-				if err != nil {
-					conn.Close()
-					return nil, err
-				}
-				return tlsConn, nil
-			},
-			IdleConnTimeout:       time.Minute,
-			ResponseHeaderTimeout: time.Second * 10,
-			ForceAttemptHTTP2:     true,
-		}
-
-		err := http2.ConfigureTransport(transport) // enable http2
-		if err != nil {
-			return err
-		}
-
-		httpClient = &http.Client{
-			Transport: transport,
-		}
-
-		if !strings.HasPrefix(path, "/") {
-			path = "/" + path
-		}
-
-		_, portStr, err := net.SplitHostPort(serverAddr)
-		url = "wss://" + hostName + ":" + portStr + path
-	}
-
 	for {
 		localConn, err := l.Accept()
 		if err != nil {
@@ -88,36 +44,25 @@ func doClient(l net.Listener, serverAddr, hostName string, caPool *x509.CertPool
 
 		go func() {
 			defer localConn.Close()
-			var serverConn net.Conn
 
-			if wss {
-				serverWSSConn, err := dialWebsocketConn(httpClient, url)
-				if err != nil {
-					log.Printf("ERROR: doClient: dialWebsocketConn: %v", err)
-					return
-				}
-				defer serverWSSConn.Close()
+			serverRawConn, err := dialer.Dial("tcp", serverAddr)
+			if err != nil {
+				log.Printf("ERROR: doClient: dialer.Dial: %v", err)
+				return
+			}
+			defer serverRawConn.Close()
 
-				serverConn = serverWSSConn
-			} else {
-				serverRawConn, err := dialer.Dial("tcp", serverAddr)
-				if err != nil {
-					log.Printf("ERROR: doClient: dialer.Dial: %v", err)
-					return
-				}
-				defer serverRawConn.Close()
-
-				serverTLSConn := tls.Client(serverRawConn, tlsConfig)
-				if err := tls13HandshakeWithTimeout(serverTLSConn, time.Second*5); err != nil {
-					log.Printf("ERROR: doClient: tlsHandshakeTimeout: %v", err)
-					return
-				}
-
-				serverConn = serverTLSConn
+			serverTLSConn := tls.Client(serverRawConn, tlsConfig)
+			if err := tls13HandshakeWithTimeout(serverTLSConn, time.Second*5); err != nil {
+				log.Printf("ERROR: doClient: tlsHandshakeTimeout: %v", err)
+				return
 			}
 
-			if sendRandomHeader {
-				serverConn = &randomHeaderConn{Conn: serverConn}
+			var serverConn net.Conn
+			if sendPaddingData {
+				serverConn = newPaddingConn(serverTLSConn, true, false)
+			} else {
+				serverConn = serverTLSConn
 			}
 
 			if err := openTunnel(localConn, serverConn, timeout); err != nil {
