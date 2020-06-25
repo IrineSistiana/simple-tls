@@ -1,19 +1,22 @@
 # simple-tls
 
-Probably the simplest tls/wss plugin. 
+Probably the simplest tls plugin. 
 
 It can:
 
-- Protect your connections with real TLS1.3 (not just obfuscating).
+- Protect and obfuscate your connections with real TLS1.3 (not just obfuscate with some fake headers).
 - Run as a SIP003 plugin and run on Android platform.
-- Add a random header to every connection to against traffic analysis. (optional)
-- Transfer your data via CDN. (optional)
+- Can send padding data to against traffic analysis. (optional, experimental)
 
 ---
 
-Download here: [release](https://github.com/IrineSistiana/simple-tls/releases)
+## How to build
 
-## Command help
+You will need go v1.14 or later.
+
+    $ go build
+
+## Usage
 
         client bind addr               server bind addr
                |                             |
@@ -26,24 +29,25 @@ Download here: [release](https://github.com/IrineSistiana/simple-tls/releases)
         [Host:Port]  bind addr
     -d string
         [Host:Port]  destination addr
-    -wss
-        Use Websocket Secure protocol
-    -path string
-        Websocket path
-    -rh 
-        Add a random header(512b~16Kb) to every connection to against traffic analysis
 
-    # Run as a client
+    # Transfer mode (Client and server must have the same mode)
+    -pd
+        If enabled, server will send some padding data to against traffic analysis.
+
+    # Client arguments
     -n string
-        Server certificate name
+        Server certificate name. If blank, it will be the host in -d.
+    -no-verify
+        If enabled, client won't verify the server's certificate chain and host name.
+        If enabled, TLS is susceptible to man-in-the-middle attacks. 
     -ca string
-        PEM CA file path. [This imports a file]
+        Load a CA file from path.
     -cca string
-        A base64 encoded PEM CA certificate. [This imports a base64 string]
+        Load a base64 encoded PEM CA certificate from string.
 
-    # Run as a server
+    # Server arguments
     -s    
-        Run as a server
+        If enabled, simple-tls will run as a server.
     -cert string
         PEM certificate file path
     -key string
@@ -65,45 +69,32 @@ Download here: [release](https://github.com/IrineSistiana/simple-tls/releases)
 
 ## Standalone mode
 
-    Run as a server: 
-        simple-tls -b 0.0.0.0:1080 -d 127.0.0.1:12345 -s -key /path/to/your/key -cert /path/to/your/cert
-    Run as a client:
-        simple-tls -b 127.0.0.1:1080 -d your_server_ip:1080 -n your.server.certificates.dnsname
+Run as a server: 
+
+    simple-tls -b 0.0.0.0:1080 -d 127.0.0.1:12345 -s -key /path/to/your/key -cert /path/to/your/cert
+
+Run as a client:
+        
+    simple-tls -b 127.0.0.1:1080 -d your_server_ip:1080 -n your.server.certificates.dnsname
 
 ## SIP003 mode
 
-Comply with shadowsocks [SIP003](https://shadowsocks.org/en/spec/Plugin.html) plugin protocol. Accepted key-value pair are [same as above](#command). Shadowsocks will automatically set `-d` and `-b` parameters, no need to set manually.
+Comply with shadowsocks [SIP003](https://shadowsocks.org/en/spec/Plugin.html) plugin protocol. Accepted key-value pair are [same as above](#usage). Shadowsocks will automatically set `-d` and `-b` parameters, no need to set manually.
 
 Take [shadowsocks-libev](https://github.com/shadowsocks/shadowsocks-libev) as an example:
 
-    # TLS
     ss-server -c config.json --plugin simple-tls --plugin-opts "s;key=/path/to/your/key;cert=/path/to/your/cert"
     ss-local -c config.json --plugin simple-tls --plugin-opts "n=your.server.certificates.dnsname"
-
-    # WSS
-    ss-server -c config.json --plugin simple-tls --plugin-opts "s;wss;key=/path/to/your/key;cert=/path/to/your/cert"
-    ss-local -c config.json --plugin simple-tls --plugin-opts "wss;n=your.server.certificates.dnsname"
 
 ## Android
 
 `simple-tls-android` is a plugin for [shadowsocks-android](https://github.com/shadowsocks/shadowsocks-android). You need to download and install shadowsocks-android first. It's [open-source](https://github.com/IrineSistiana/simple-tls-android).
 
-## Tips for certificate and -cca/-ca argument
+## More tips
 
-To start a server, the argument `-key` and `-cert` are required. Because simple-tls needs a certificate to establish real TLS1.3 connections.
-
-For your safety, the server certificate verification in simple-tls **can't be disabled**. You need to use `-cca` or `-ca` argument to import the CA certificate in the client if you are using a self-signed certificate in server.
-
-In the test environment, you can use `-gen-cert` in server to quickly generate an ECC certificate, and use `-cca` or `-ca` in the client to import its cert as CA.
-
-## Tips for speed and stability
-
-Considering that the TLS1.3 layer is sufficiently secure, a simple encryption can be used in lower-layer connections to increase speed.
-
-In Linux system, decrease your tcp r/w memory by using `sysctl` to improve stability.
-
-    sudo sysctl net.ipv4.tcp_rmem="4096 87380 1048576"
-    sudo sysctl net.ipv4.tcp_wmem="4096 16384 1048576"
+- You can start the server without `-key` and `-cert`. Server will automatically generate a temporary certificate. In this case, client have to disable verify by using  `-no-verify`.
+- You can use `-gen-cert` to quickly generate an ECC certificate, and use `-cca` or `-ca` in the client to import its cert as CA.
+- Under normal circumstances, it is recommended to use `-ca` to directly load certificate file. `-cca` is recommended for Android. In Android system it's very inconvenient to transfer and load files.
 
 ---
 
