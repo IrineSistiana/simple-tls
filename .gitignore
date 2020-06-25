@@ -18,4 +18,6 @@ vendor/
 build*.py
 release/
 
+# ide
 .vscode/
+.idea/
