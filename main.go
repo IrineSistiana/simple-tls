@@ -47,7 +47,7 @@ func main() {
 	}()
 
 	var bindAddr, dstAddr, serverName, cca, ca, cert, key string
-	var isServer, sendPaddingData, tfo, vpn, genCert bool
+	var insecureSkipVerify, isServer, sendPaddingData, tfo, vpn, genCert bool
 	var cpu int
 	var timeout time.Duration
 	var timeoutFlag int
@@ -62,6 +62,7 @@ func main() {
 	commandLine.StringVar(&serverName, "n", "", "server name")
 	commandLine.StringVar(&ca, "ca", "", "PEM CA file path")
 	commandLine.StringVar(&cca, "cca", "", "base64 encoded PEM CA")
+	commandLine.BoolVar(&insecureSkipVerify, "no-verify", false, "client won't verify the server's certificate chain and host name")
 
 	// server only
 	commandLine.BoolVar(&isServer, "s", false, "is server")
@@ -170,14 +171,29 @@ func main() {
 
 	if isServer {
 		var certificates []tls.Certificate
-		if len(cert) == 0 || len(key) == 0 {
-			log.Fatal("main: server must have a X509 key pair, aka. -cert and -key")
-		} else {
+
+		switch {
+		case len(cert) == 0 && len(key) == 0: // no cert and key
+			log.Printf("main: warnning: either -key nor -cert is been specificed")
+
+			dnsName, keyPEM, certPEM, err := generateCertificate(serverName)
+			if err != nil {
+				log.Fatalf("main: generateCertificate: %v", err)
+			}
+			log.Printf("main: warnning: using tmp certificate %s", dnsName)
+			cer, err := tls.X509KeyPair(certPEM, keyPEM)
+			if err != nil {
+				log.Fatalf("main: X509KeyPair: %v", err)
+			}
+			certificates = []tls.Certificate{cer}
+		case len(cert) != 0 && len(key) != 0: // has cert and key
 			cer, err := tls.LoadX509KeyPair(cert, key) //load cert
 			if err != nil {
 				log.Fatalf("main: LoadX509KeyPair: %v", err)
 			}
 			certificates = []tls.Certificate{cer}
+		default:
+			log.Fatal("main: server must have a X509 key pair, aka. -cert and -key")
 		}
 
 		lc := net.ListenConfig{Control: getControlFunc(&tcpConfig{tfo: tfo})}
@@ -229,7 +245,7 @@ func main() {
 			log.Fatalf("main: net.Listen: %v", err)
 		}
 
-		err = doClient(l, dstAddr, host, rootCAs, sendPaddingData, timeout, vpn, tfo)
+		err = doClient(l, dstAddr, host, rootCAs, insecureSkipVerify, sendPaddingData, timeout, vpn, tfo)
 		if err != nil {
 			log.Fatalf("main: doServer: %v", err)
 		}

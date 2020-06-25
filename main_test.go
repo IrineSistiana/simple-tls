@@ -98,7 +98,7 @@ func Test_main(t *testing.T) {
 			t.Fatal("appendCertsFromPEM failed")
 		}
 
-		go doClient(clientListener, serverListener.Addr().String(), "example.com", caPool, sendPaddingData, timeout, false, false)
+		go doClient(clientListener, serverListener.Addr().String(), "example.com", caPool, false, sendPaddingData, timeout, false, false)
 
 		log.Printf("echo: %v, server: %v client: %v", echoListener.Addr(), serverListener.Addr(), clientListener.Addr())
 		conn, err := net.Dial("tcp", clientListener.Addr().String())

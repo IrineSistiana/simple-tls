@@ -26,7 +26,7 @@ import (
 	"time"
 )
 
-func doClient(l net.Listener, serverAddr, hostName string, caPool *x509.CertPool, sendPaddingData bool, timeout time.Duration, vpnMode, tfo bool) error {
+func doClient(l net.Listener, serverAddr, hostName string, caPool *x509.CertPool, insecureSkipVerify, sendPaddingData bool, timeout time.Duration, vpnMode, tfo bool) error {
 	dialer := net.Dialer{
 		Timeout: time.Second * 5,
 		Control: getControlFunc(&tcpConfig{vpnMode: vpnMode, tfo: tfo}),
@@ -35,6 +35,7 @@ func doClient(l net.Listener, serverAddr, hostName string, caPool *x509.CertPool
 	tlsConfig.ClientSessionCache = tls.NewLRUClientSessionCache(64)
 	tlsConfig.ServerName = hostName
 	tlsConfig.RootCAs = caPool
+	tlsConfig.InsecureSkipVerify = insecureSkipVerify
 
 	for {
 		localConn, err := l.Accept()
