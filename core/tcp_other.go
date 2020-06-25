@@ -1,4 +1,4 @@
-// +build linux android
+// +build !android,!linux,!windows
 
 //     Copyright (C) 2020, IrineSistiana
 //
@@ -17,26 +17,13 @@
 //     You should have received a copy of the GNU General Public License
 //     along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-package main
+
+package core
 
 import (
-	"log"
-
-	"golang.org/x/sys/unix"
+	"syscall"
 )
 
-//TCP_MAXSEG TCP_NODELAY SO_SND/RCVBUF etc..
-func (c *tcpConfig) setSockOpt(uintFd uintptr) {
-	if c == nil {
-		return
-	}
-	fd := int(uintFd)
-
-	if c.tfo {
-		err := unix.SetsockoptInt(fd, unix.IPPROTO_TCP, unix.TCP_FASTOPEN_CONNECT, 1)
-		if err != nil {
-			log.Printf("setsockopt: TCP_FASTOPEN_CONNECT, %v", err)
-		}
-	}
-	return
+func GetControlFunc(conf *TcpConfig) func(network, address string, c syscall.RawConn) error {
+	return nil
 }

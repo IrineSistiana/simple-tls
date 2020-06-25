@@ -15,7 +15,7 @@
 //     You should have received a copy of the GNU General Public License
 //     along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-package main
+package core
 
 import (
 	"bytes"
@@ -71,7 +71,7 @@ func Test_main(t *testing.T) {
 	// test1
 	test := func(sendPaddingData bool) {
 		// start server
-		_, keyPEM, certPEM, err := generateCertificate("example.com")
+		_, keyPEM, certPEM, err := GenerateCertificate("example.com")
 		cert, err := tls.X509KeyPair(certPEM, keyPEM)
 		if err != nil {
 			t.Fatal(err)
@@ -83,7 +83,7 @@ func Test_main(t *testing.T) {
 		}
 		defer serverListener.Close()
 
-		go doServer(serverListener, []tls.Certificate{cert}, echoListener.Addr().String(), sendPaddingData, timeout)
+		go DoServer(serverListener, []tls.Certificate{cert}, echoListener.Addr().String(), sendPaddingData, timeout)
 
 		// start client
 		clientListener, err := net.Listen("tcp", "127.0.0.1:0")
@@ -98,7 +98,7 @@ func Test_main(t *testing.T) {
 			t.Fatal("appendCertsFromPEM failed")
 		}
 
-		go doClient(clientListener, serverListener.Addr().String(), "example.com", caPool, false, sendPaddingData, timeout, false, false)
+		go DoClient(clientListener, serverListener.Addr().String(), "example.com", caPool, false, sendPaddingData, timeout, false, false)
 
 		log.Printf("echo: %v, server: %v client: %v", echoListener.Addr(), serverListener.Addr(), clientListener.Addr())
 		conn, err := net.Dial("tcp", clientListener.Addr().String())

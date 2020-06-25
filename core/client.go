@@ -15,7 +15,7 @@
 //     You should have received a copy of the GNU General Public License
 //     along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-package main
+package core
 
 import (
 	"crypto/tls"
@@ -26,10 +26,10 @@ import (
 	"time"
 )
 
-func doClient(l net.Listener, serverAddr, hostName string, caPool *x509.CertPool, insecureSkipVerify, sendPaddingData bool, timeout time.Duration, vpnMode, tfo bool) error {
+func DoClient(l net.Listener, serverAddr, hostName string, caPool *x509.CertPool, insecureSkipVerify, sendPaddingData bool, timeout time.Duration, vpnMode, tfo bool) error {
 	dialer := net.Dialer{
 		Timeout: time.Second * 5,
-		Control: getControlFunc(&tcpConfig{vpnMode: vpnMode, tfo: tfo}),
+		Control: GetControlFunc(&TcpConfig{AndroidVPN: vpnMode, EnableTFO: tfo}),
 	}
 	tlsConfig := new(tls.Config)
 	tlsConfig.ClientSessionCache = tls.NewLRUClientSessionCache(64)
@@ -48,14 +48,14 @@ func doClient(l net.Listener, serverAddr, hostName string, caPool *x509.CertPool
 
 			serverRawConn, err := dialer.Dial("tcp", serverAddr)
 			if err != nil {
-				log.Printf("ERROR: doClient: dialer.Dial: %v", err)
+				log.Printf("ERROR: DoClient: dialer.Dial: %v", err)
 				return
 			}
 			defer serverRawConn.Close()
 
 			serverTLSConn := tls.Client(serverRawConn, tlsConfig)
 			if err := tls13HandshakeWithTimeout(serverTLSConn, time.Second*5); err != nil {
-				log.Printf("ERROR: doClient: tlsHandshakeTimeout: %v", err)
+				log.Printf("ERROR: DoClient: tlsHandshakeTimeout: %v", err)
 				return
 			}
 
@@ -67,7 +67,7 @@ func doClient(l net.Listener, serverAddr, hostName string, caPool *x509.CertPool
 			}
 
 			if err := openTunnel(localConn, serverConn, timeout); err != nil {
-				log.Printf("ERROR: doClient: openTunnel: %v", err)
+				log.Printf("ERROR: DoClient: openTunnel: %v", err)
 			}
 		}()
 	}

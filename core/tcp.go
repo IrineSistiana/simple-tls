@@ -1,5 +1,3 @@
-// +build linux,!android
-
 //     Copyright (C) 2020, IrineSistiana
 //
 //     This file is part of simple-tls.
@@ -17,16 +15,9 @@
 //     You should have received a copy of the GNU General Public License
 //     along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-package main
+package core
 
-import "syscall"
-
-func getControlFunc(conf *tcpConfig) func(network, address string, c syscall.RawConn) error {
-	if conf != nil {
-		return func(network, address string, c syscall.RawConn) error {
-			return c.Control(conf.setSockOpt)
-		}
-	}
-
-	return nil
+type TcpConfig struct {
+	AndroidVPN bool
+	EnableTFO  bool
 }

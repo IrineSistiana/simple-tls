@@ -1,3 +1,5 @@
+// +build linux android
+
 //     Copyright (C) 2020, IrineSistiana
 //
 //     This file is part of simple-tls.
@@ -15,9 +17,26 @@
 //     You should have received a copy of the GNU General Public License
 //     along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-package main
+package core
 
-type tcpConfig struct {
-	vpnMode bool
-	tfo     bool
+import (
+	"log"
+
+	"golang.org/x/sys/unix"
+)
+
+//TCP_MAXSEG TCP_NODELAY SO_SND/RCVBUF etc..
+func (c *TcpConfig) setSockOpt(uintFd uintptr) {
+	if c == nil {
+		return
+	}
+	fd := int(uintFd)
+
+	if c.EnableTFO {
+		err := unix.SetsockoptInt(fd, unix.IPPROTO_TCP, unix.TCP_FASTOPEN_CONNECT, 1)
+		if err != nil {
+			log.Printf("setsockopt: TCP_FASTOPEN_CONNECT, %v", err)
+		}
+	}
+	return
 }

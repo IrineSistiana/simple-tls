@@ -1,4 +1,4 @@
-// +build windows
+// +build linux,!android
 
 //     Copyright (C) 2020, IrineSistiana
 //
@@ -17,12 +17,16 @@
 //     You should have received a copy of the GNU General Public License
 //     along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-package main
+package core
 
-import (
-	"syscall"
-)
+import "syscall"
 
-func getControlFunc(conf *tcpConfig) func(network, address string, c syscall.RawConn) error {
-	return nil // nothing to do on windows @_@
+func GetControlFunc(conf *TcpConfig) func(network, address string, c syscall.RawConn) error {
+	if conf != nil {
+		return func(network, address string, c syscall.RawConn) error {
+			return c.Control(conf.setSockOpt)
+		}
+	}
+
+	return nil
 }
