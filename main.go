@@ -37,6 +37,8 @@ import (
 	"github.com/IrineSistiana/simple-tls/core"
 )
 
+var version = "unknown/dev"
+
 func main() {
 	log.Printf("main: simple-tls %s", version)
 	go func() {
