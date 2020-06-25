@@ -182,9 +182,9 @@ type paddingBoundConn struct {
 	lastRead time.Time
 }
 
-// defaultGetPaddingSize returns a random num between 8 ~ 64
+// defaultGetPaddingSize returns a random num between 4 ~ 16
 func defaultGetPaddingSize() uint16 {
-	return 8 + uint16(rand.Int31n(56))
+	return 4 + uint16(rand.Int31n(12))
 }
 
 func boundPaddingConn(c net.Conn, pc *paddingConn) *paddingBoundConn {
