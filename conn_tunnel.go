@@ -39,53 +39,78 @@ func releaseIOBuf(b []byte) {
 	ioCopybuffPool.Put(b)
 }
 
-type firstErr struct {
-	reportrOnce sync.Once
-	err         error
+type tunnelContext struct {
+	sync.Mutex
+	cancelOnce sync.Once
+
+	done bool
+	err  error
 }
 
-func (fe *firstErr) report(err error) {
-	fe.reportrOnce.Do(func() {
-		if err != nil {
-			fe.err = err
-		}
+func (fe *tunnelContext) reportAndCancel(err error) {
+	fe.Lock()
+	defer fe.Unlock()
+
+	fe.cancelOnce.Do(func() {
+		fe.done = true
+		fe.err = err
 	})
 }
 
-func (fe *firstErr) getErr() error {
+func (fe *tunnelContext) getErr() error {
+	fe.Lock()
+	defer fe.Unlock()
+
 	return fe.err
 }
 
-// openTunnel opens a tunnel between a and b, if any end
-// reports an error during io.Copy, openTunnel will close
-// both of them.
+func (fe *tunnelContext) isDone() bool {
+	fe.Lock()
+	defer fe.Unlock()
+
+	return fe.done
+}
+
+func (fe *tunnelContext) setDeadline(c net.Conn, t time.Time) error {
+	fe.Lock()
+	defer fe.Unlock()
+
+	if fe.done {
+		return nil
+	}
+
+	return c.SetDeadline(t)
+}
+
+// openTunnel opens a tunnel between a and b.
 func openTunnel(a, b net.Conn, timeout time.Duration) error {
-	fe := firstErr{}
+	tc := tunnelContext{}
 
-	go openOneWayTunnel(a, b, timeout, &fe)
-	openOneWayTunnel(b, a, timeout, &fe)
+	go openOneWayTunnel(a, b, timeout, &tc)
+	openOneWayTunnel(b, a, timeout, &tc)
 
-	return fe.getErr()
+	return tc.getErr()
 }
 
 // don not use this func, use openTunnel instead
-func openOneWayTunnel(dst, src net.Conn, timeout time.Duration, fe *firstErr) {
+func openOneWayTunnel(dst, src net.Conn, timeout time.Duration, tc *tunnelContext) {
 	buf := acquireIOBuf()
 
-	_, err := copyBuffer(dst, src, buf, timeout)
+	_, err := copyBuffer(dst, src, buf, timeout, tc)
 
 	// a nil err might be an io.EOF err, which is surpressed by copyBuffer.
 	// report a nil err means one conn was closed by peer.
-	fe.report(err)
+	tc.reportAndCancel(err)
 
-	//let another goroutine break from copy loop
-	src.Close()
-	dst.Close()
+	// let another goroutine break from copy loop
+	// tc is canceled, no race.
+	src.SetDeadline(time.Now())
+	dst.SetDeadline(time.Now())
 
 	releaseIOBuf(buf)
 }
 
-func copyBuffer(dst net.Conn, src net.Conn, buf []byte, timeout time.Duration) (written int64, err error) {
+func copyBuffer(dst net.Conn, src net.Conn, buf []byte, timeout time.Duration, tc *tunnelContext) (written int64, err error) {
 
 	if len(buf) <= 0 {
 		panic("buf size <= 0")
@@ -94,12 +119,12 @@ func copyBuffer(dst net.Conn, src net.Conn, buf []byte, timeout time.Duration) (
 	var lastPadding time.Time
 
 	for {
-		src.SetDeadline(time.Now().Add(timeout))
+		tc.setDeadline(src, time.Now().Add(timeout))
 		nr, er := src.Read(buf)
 
-		if ps, ok := src.(*paddingConn); ok {
+		if ps, ok := src.(*paddingConn); ok { // if src needs to pad
 			if ps.writePaddingEnabled() && time.Since(lastPadding) > paddingIntervalThreshold { // time to pad
-				ps.SetDeadline(time.Now().Add(timeout))
+				tc.setDeadline(ps, time.Now().Add(timeout))
 				_, err := ps.writePadding(defaultGetPaddingSize())
 				if err != nil {
 					return written, fmt.Errorf("write padding data: %v", err)
@@ -110,7 +135,7 @@ func copyBuffer(dst net.Conn, src net.Conn, buf []byte, timeout time.Duration) (
 		}
 
 		if nr > 0 {
-			dst.SetDeadline(time.Now().Add(timeout))
+			tc.setDeadline(dst, time.Now().Add(timeout))
 			nw, ew := dst.Write(buf[0:nr])
 			if nw > 0 {
 				written += int64(nw)
