@@ -184,7 +184,7 @@ func main() {
 
 		switch {
 		case len(cert) == 0 && len(key) == 0: // no cert and key
-			log.Printf("main: warnning: either -key nor -cert is been specificed")
+			log.Printf("main: warnning: neither -key nor -cert is specified")
 
 			dnsName, keyPEM, certPEM, err := core.GenerateCertificate(serverName)
 			if err != nil {
