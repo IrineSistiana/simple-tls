@@ -111,7 +111,6 @@ func openOneWayTunnel(dst, src net.Conn, timeout time.Duration, tc *tunnelContex
 }
 
 func copyBuffer(dst net.Conn, src net.Conn, buf []byte, timeout time.Duration, tc *tunnelContext) (written int64, err error) {
-
 	if len(buf) <= 0 {
 		panic("buf size <= 0")
 	}
@@ -121,18 +120,16 @@ func copyBuffer(dst net.Conn, src net.Conn, buf []byte, timeout time.Duration, t
 	for {
 		tc.setDeadline(src, time.Now().Add(timeout))
 		nr, er := src.Read(buf)
-		if er != nil {
-			return written, err
-		}
-
-		if ps, ok := src.(*paddingConn); ok { // if src needs to pad
-			if ps.writePaddingEnabled() && time.Since(lastPadding) > paddingIntervalThreshold { // time to pad
-				tc.setDeadline(ps, time.Now().Add(timeout))
-				_, err := ps.writePadding(defaultGetPaddingSize())
-				if err != nil {
-					return written, fmt.Errorf("write padding data: %v", err)
+		if er == nil { // only pad when src is healthy(no err)
+			if ps, ok := src.(*paddingConn); ok { // if src needs to pad
+				if ps.writePaddingEnabled() && time.Since(lastPadding) > paddingIntervalThreshold { // time to pad
+					tc.setDeadline(ps, time.Now().Add(timeout))
+					_, err := ps.writePadding(defaultGetPaddingSize())
+					if err != nil {
+						return written, fmt.Errorf("write padding data: %v", err)
+					}
+					lastPadding = time.Now()
 				}
-				lastPadding = time.Now()
 			}
 		}
 
