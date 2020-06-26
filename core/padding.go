@@ -56,8 +56,7 @@ type paddingConn struct {
 	currentFrame frameType
 	frameLeft    uint16
 
-	wl   sync.Mutex
-	wBuf [3 + 0xffff]byte
+	wl sync.Mutex
 }
 
 func newPaddingConn(c net.Conn, paddingInRead, paddingOnWrite bool) *paddingConn {
@@ -88,11 +87,15 @@ read:
 
 	switch c.currentFrame {
 	case headerData:
+		if c.frameLeft == 0 {
+			return 0, io.EOF
+		}
+
 		n1, err := io.LimitReader(c.Conn, int64(c.frameLeft)).Read(b)
 		c.frameLeft -= uint16(n1)
 		if c.frameLeft == 0 { // this frame is eof
-			c.currentFrame = headerNil // reset currentFrame
-			if err == io.EOF {         // don't raise this EOF
+			c.currentFrame = headerNil    // reset currentFrame
+			if err == io.EOF && n1 != 0 { // don't raise this EOF
 				err = nil
 			}
 		}
@@ -128,9 +131,26 @@ func (c *paddingConn) Write(b []byte) (n int, err error) {
 	if !c.paddingOnWrite {
 		return c.Conn.Write(b)
 	}
+	return c.writeFrame(headerData, b)
+}
 
+var errPaddingDisabled = errors.New("connect padding opt is disabled")
+
+func (c *paddingConn) writePadding(l uint16) (n int, err error) {
+	if !c.paddingOnWrite {
+		return 0, errPaddingDisabled
+	}
+	return c.writeFrame(headerPadding, zeros[:l])
+}
+
+var wBufPool = sync.Pool{New: func() interface{} { return make([]byte, 3+0xffff) }}
+
+func (c *paddingConn) writeFrame(t frameType, b []byte) (n int, err error) {
 	c.wl.Lock()
 	defer c.wl.Unlock()
+
+	buf := wBufPool.Get().([]byte)
+	defer wBufPool.Put(buf)
 
 	l := len(b)
 	for n < l {
@@ -142,36 +162,18 @@ func (c *paddingConn) Write(b []byte) (n int, err error) {
 			f = 0xffff
 		}
 
-		c.wBuf[0] = byte(headerData)
-		c.wBuf[1] = byte(f >> 8)
-		c.wBuf[2] = byte(f)
+		buf[0] = byte(t)
+		buf[1] = byte(f >> 8)
+		buf[2] = byte(f)
 
-		n1 := copy(c.wBuf[3:], b[n:n+f])
-		n2, err := c.Conn.Write(c.wBuf[:3+n1])
+		n1 := copy(buf[3:], b[n:n+f])
+		n2, err := c.Conn.Write(buf[:3+n1])
 		n += n2 - 3 // 3 bytes header
 		if err != nil {
 			return n, err
 		}
 	}
 	return n, nil
-}
-
-var errPaddingDisabled = errors.New("connect padding opt is disabled")
-
-func (c *paddingConn) writePadding(l uint16) (n int, err error) {
-	if !c.paddingOnWrite {
-		return 0, errPaddingDisabled
-	}
-
-	c.wl.Lock()
-	defer c.wl.Unlock()
-
-	c.wBuf[0] = byte(headerPadding)
-	c.wBuf[1] = byte(l >> 8)
-	c.wBuf[2] = byte(l)
-
-	n1 := copy(c.wBuf[3:], zeros[:l])
-	return c.Conn.Write(c.wBuf[:3+n1])
 }
 
 // defaultGetPaddingSize returns a random num between 4 ~ 16
