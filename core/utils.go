@@ -48,10 +48,9 @@ func tls13HandshakeWithTimeout(c *tls.Conn, timeout time.Duration) error {
 	return nil
 }
 
-
 func GenerateCertificate(serverName string) (dnsName string, keyPEM, certPEM []byte, err error) {
 	//priv key
-	key, err := ecdsa.GenerateKey(elliptic.P384(), rand.Reader)
+	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	if err != nil {
 		return
 	}
