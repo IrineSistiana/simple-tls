@@ -8,7 +8,7 @@ Probably the simplest TLS plugin. It can:
 
 - Protect and obfuscate your connections with real TLS1.3.
 - Easily run as a SIP003 plugin and run on Android platform.
-- Send padding data to against traffic analysis. (optional, experimental)
+- Send random data packets at appropriate times. This can change the timing characteristics of data packets in one connection, which can protect you against timing traffic analysis. (optional, experimental)
 
 ---
 
@@ -43,7 +43,7 @@ You will need go v1.14 or later.
 
     # Transfer mode (Client and server must have the same mode)
     -pd
-        Enable padding-data more. Server will send some padding data to against traffic analysis.
+        Enable padding-data mode. Server will send some padding data to against traffic analysis.
 
     # Client arguments
     -n string
@@ -98,9 +98,9 @@ You can use `-gen-cert` to quickly generate an ECC certificate.
 
     simple-tls -gen-cert -n certificate.dnsname -key ./my_ecc_cert.key -cert ./my_ecc_cert.cert 
 
-Or you can just start the server without `-key` and `-cert`. Server will automatically generate a temporary certificate.
+Or you can just start the server without `-key` and `-cert`. Server will automatically generate a temporary certificate and store it in memory.
 
-**Please note that:** In this case, client have to disable server certificate verify by using `-no-verify`. (Which is susceptible to man-in-the-middle attacks.) Or import generated cert as CA. See below.
+**Please note that:** In those cases, client have to import generated cert as CA. See below. Or disable server certificate verify by using `-no-verify`. (not recommended, because this is susceptible to man-in-the-middle attacks.) 
 
 ## How to import CA in client
 
