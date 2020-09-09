@@ -120,6 +120,7 @@ func main() {
 	// display version
 	if showVersion {
 		println(version)
+		os.Exit(0)
 	}
 
 	// gen cert
