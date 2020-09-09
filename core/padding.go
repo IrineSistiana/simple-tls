@@ -118,8 +118,12 @@ read:
 	}
 }
 
+var paddingHeaderPool = sync.Pool{New: func() interface{} { return make([]byte, 3) }}
+
 func (c *paddingConn) readHeader() (t frameType, l uint16, err error) {
-	h := make([]byte, 3)
+	h := paddingHeaderPool.Get().([]byte)
+	defer paddingHeaderPool.Put(h)
+
 	_, err = io.ReadFull(c.Conn, h)
 	if err != nil {
 		return 0, 0, err
@@ -143,32 +147,30 @@ func (c *paddingConn) writePadding(l uint16) (n int, err error) {
 	return c.writeFrame(headerPadding, zeros[:l])
 }
 
-var wBufPool = sync.Pool{New: func() interface{} { return make([]byte, 3+0xffff) }}
+// wBufPool is a 64Kb buffer pool
+var wBufPool = sync.Pool{New: func() interface{} { return make([]byte, 0xffff) }}
 
 func (c *paddingConn) writeFrame(t frameType, b []byte) (n int, err error) {
 	c.wl.Lock()
 	defer c.wl.Unlock()
 
+	// Note:
+	// We try to align this to tls frame. So, the largest frame here is 0xffff - 3 bytes.
 	buf := wBufPool.Get().([]byte)
 	defer wBufPool.Put(buf)
 
-	l := len(b)
-	for n < l {
-		var f int
-		dataLeft := l - n
-		if dataLeft <= 0xffff {
-			f = dataLeft
-		} else {
-			f = 0xffff
-		}
+	for n < len(b) {
+		f := copy(buf[3:], b[n:])
 
 		buf[0] = byte(t)
 		buf[1] = byte(f >> 8)
 		buf[2] = byte(f)
 
-		n1 := copy(buf[3:], b[n:n+f])
-		n2, err := c.Conn.Write(buf[:3+n1])
-		n += n2 - 3 // 3 bytes header
+		n2, err := c.Conn.Write(buf[:3+f])
+
+		if n2 > 3 {
+			n += n2 - 3 // 3 bytes header
+		}
 		if err != nil {
 			return n, err
 		}
