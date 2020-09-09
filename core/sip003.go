@@ -25,7 +25,7 @@ import (
 	"strings"
 )
 
-var ErrBrokenSIP003Args = errors.New("invaild SIP003 args")
+var ErrBrokenSIP003Args = errors.New("invalid SIP003 args")
 
 //SIP003Args contains sip003 args
 type SIP003Args struct {

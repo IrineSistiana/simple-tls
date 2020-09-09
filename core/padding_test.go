@@ -47,7 +47,7 @@ func Test_paddingConn_Read_Write_Small(t *testing.T) {
 	}
 
 	if !bytes.Equal(data, buf) {
-		t.Fatal("data crupted")
+		t.Fatal("data corrupted")
 	}
 }
 
@@ -76,6 +76,6 @@ func Test_paddingConn_Read_Write(t *testing.T) {
 	}
 
 	if !bytes.Equal(data, buf) {
-		t.Fatal("data crupted")
+		t.Fatal("data corrupted")
 	}
 }

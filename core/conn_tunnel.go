@@ -26,17 +26,17 @@ import (
 )
 
 var (
-	ioCopybuffPool = &sync.Pool{New: func() interface{} {
+	ioCopyBuffPool = &sync.Pool{New: func() interface{} {
 		return make([]byte, 16*1024)
 	}}
 )
 
 func acquireIOBuf() []byte {
-	return ioCopybuffPool.Get().([]byte)
+	return ioCopyBuffPool.Get().([]byte)
 }
 
 func releaseIOBuf(b []byte) {
-	ioCopybuffPool.Put(b)
+	ioCopyBuffPool.Put(b)
 }
 
 type tunnelContext struct {
@@ -98,7 +98,7 @@ func openOneWayTunnel(dst, src net.Conn, timeout time.Duration, tc *tunnelContex
 
 	_, err := copyBuffer(dst, src, buf, timeout, tc)
 
-	// a nil err might be an io.EOF err, which is surpressed by copyBuffer.
+	// a nil err might be an io.EOF err, which is suppressed by copyBuffer.
 	// report a nil err means one conn was closed by peer.
 	tc.reportAndCancel(err)
 

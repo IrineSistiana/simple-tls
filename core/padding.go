@@ -134,7 +134,7 @@ func (c *paddingConn) Write(b []byte) (n int, err error) {
 	return c.writeFrame(headerData, b)
 }
 
-var errPaddingDisabled = errors.New("connect padding opt is disabled")
+var errPaddingDisabled = errors.New("connection padding opt is disabled")
 
 func (c *paddingConn) writePadding(l uint16) (n int, err error) {
 	if !c.paddingOnWrite {

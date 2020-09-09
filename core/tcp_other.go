@@ -1,4 +1,4 @@
-// +build !android,!linux,!windows
+// +build !android,!linux
 
 //     Copyright (C) 2020, IrineSistiana
 //
@@ -16,7 +16,6 @@
 //
 //     You should have received a copy of the GNU General Public License
 //     along with this program.  If not, see <https://www.gnu.org/licenses/>.
-
 
 package core
 
