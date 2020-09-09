@@ -67,6 +67,7 @@ func main() {
 	commandLine.StringVar(&ca, "ca", "", "PEM CA file path")
 	commandLine.StringVar(&cca, "cca", "", "base64 encoded PEM CA")
 	commandLine.BoolVar(&insecureSkipVerify, "no-verify", false, "client won't verify the server's certificate chain and host name")
+	commandLine.BoolVar(&vpn, "V", false, "enable android vpn mode.(DO NOT USE. Only for shadowsocks-android)")
 
 	// server only
 	commandLine.BoolVar(&isServer, "s", false, "is server")
@@ -106,8 +107,8 @@ func main() {
 			bindAddr = sip003Args.GetLocalAddr()
 			dstAddr = sip003Args.GetRemoteAddr()
 		}
-		tfo = sip003Args.TFO
-		vpn = sip003Args.VPN
+		tfo = tfo || sip003Args.TFO
+		vpn = vpn || sip003Args.VPN
 
 	} else {
 		err := commandLine.Parse(os.Args[1:])
