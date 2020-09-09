@@ -28,10 +28,8 @@ import (
 func DoServer(l net.Listener, certificates []tls.Certificate, dst string, sendPaddingData bool, timeout time.Duration) error {
 
 	tlsConfig := new(tls.Config)
-	tlsConfig.MinVersion = tls.VersionTLS13
 	tlsConfig.NextProtos = []string{"h2"}
 	tlsConfig.Certificates = certificates
-	tlsConfig.MinVersion = tls.VersionTLS13
 
 	for {
 		clientRawConn, err := l.Accept()
