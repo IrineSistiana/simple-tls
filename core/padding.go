@@ -56,15 +56,11 @@ type paddingConn struct {
 	currentFrame frameType
 	frameLeft    uint16
 
-	wl sync.Mutex
+	wl *locker
 }
 
 func newPaddingConn(c net.Conn, paddingInRead, paddingOnWrite bool) *paddingConn {
-	return &paddingConn{Conn: c, paddingInRead: paddingInRead, paddingOnWrite: paddingOnWrite}
-}
-
-func (c *paddingConn) writePaddingEnabled() bool {
-	return c.paddingOnWrite
+	return &paddingConn{Conn: c, paddingInRead: paddingInRead, paddingOnWrite: paddingOnWrite, wl: newLocker()}
 }
 
 func (c *paddingConn) Read(b []byte) (n int, err error) {
@@ -178,7 +174,7 @@ func (c *paddingConn) writeFrame(t frameType, b []byte) (n int, err error) {
 	return n, nil
 }
 
-// defaultGetPaddingSize returns a random num between 4 ~ 16
-func defaultGetPaddingSize() uint16 {
+// randomPaddingSize returns a random num between 4 ~ 16
+func randomPaddingSize() uint16 {
 	return 4 + uint16(rand.Int31n(12))
 }

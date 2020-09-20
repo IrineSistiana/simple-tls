@@ -18,7 +18,6 @@
 package core
 
 import (
-	"fmt"
 	"io"
 	"net"
 	"sync"
@@ -115,7 +114,7 @@ func copyBuffer(dst net.Conn, src net.Conn, buf []byte, timeout time.Duration, t
 		panic("buf size <= 0")
 	}
 
-	var lastPadding time.Time
+	var previousRead time.Time
 
 	for {
 		tc.setDeadline(src, time.Now().Add(timeout))
@@ -132,6 +131,8 @@ func copyBuffer(dst net.Conn, src net.Conn, buf []byte, timeout time.Duration, t
 				}
 			}
 		}
+		// update previousRead
+		previousRead = time.Now()
 
 		if nr > 0 {
 			tc.setDeadline(dst, time.Now().Add(timeout))
