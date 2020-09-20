@@ -120,14 +120,11 @@ func copyBuffer(dst net.Conn, src net.Conn, buf []byte, timeout time.Duration, t
 		tc.setDeadline(src, time.Now().Add(timeout))
 		nr, er := src.Read(buf)
 		if er == nil { // only pad when src is healthy(no err)
-			if ps, ok := src.(*paddingConn); ok { // if src needs to pad
-				if ps.writePaddingEnabled() && time.Since(lastPadding) > paddingIntervalThreshold { // time to pad
+			if ps, ok := src.(*paddingConn); ok && ps.paddingOnWrite {
+				// don not pad when read is continuous
+				if time.Since(previousRead) > paddingIntervalThreshold {
 					tc.setDeadline(ps, time.Now().Add(timeout))
-					_, err := ps.writePadding(defaultGetPaddingSize())
-					if err != nil {
-						return written, fmt.Errorf("write padding data: %v", err)
-					}
-					lastPadding = time.Now()
+					ps.tryWritePaddingInOtherGoRoutine(randomPaddingSize())
 				}
 			}
 		}

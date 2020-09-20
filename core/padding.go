@@ -131,7 +131,7 @@ func (c *paddingConn) Write(b []byte) (n int, err error) {
 	if !c.paddingOnWrite {
 		return c.Conn.Write(b)
 	}
-	return c.writeFrame(headerData, b)
+	return c.writeFrame(headerData, b, false)
 }
 
 var errPaddingDisabled = errors.New("connection padding opt is disabled")
@@ -140,15 +140,30 @@ func (c *paddingConn) writePadding(l uint16) (n int, err error) {
 	if !c.paddingOnWrite {
 		return 0, errPaddingDisabled
 	}
-	return c.writeFrame(headerPadding, zeros[:l])
+	return c.writeFrame(headerPadding, zeros[:l], false)
+}
+
+func (c *paddingConn) tryWritePaddingInOtherGoRoutine(l uint16) {
+	if !c.paddingOnWrite {
+		return
+	}
+
+	if c.wl.tryLock() == true {
+		go func() {
+			c.writeFrame(headerPadding, zeros[:l], true)
+			c.wl.unlock()
+		}()
+	}
 }
 
 // wBufPool is a 64Kb buffer pool
 var wBufPool = sync.Pool{New: func() interface{} { return make([]byte, 0xffff) }}
 
-func (c *paddingConn) writeFrame(t frameType, b []byte) (n int, err error) {
-	c.wl.Lock()
-	defer c.wl.Unlock()
+func (c *paddingConn) writeFrame(t frameType, b []byte, disableLocker bool) (n int, err error) {
+	if !disableLocker {
+		c.wl.lock()
+		defer c.wl.unlock()
+	}
 
 	// Note:
 	// We try to align this to tls frame. So, the largest frame here is 0xffff - 3 bytes.
