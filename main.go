@@ -30,6 +30,7 @@ import (
 	"os"
 	"os/signal"
 	"runtime"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -67,7 +68,6 @@ func main() {
 	commandLine.StringVar(&ca, "ca", "", "PEM CA file path")
 	commandLine.StringVar(&cca, "cca", "", "base64 encoded PEM CA")
 	commandLine.BoolVar(&insecureSkipVerify, "no-verify", false, "client won't verify the server's certificate chain and host name")
-	commandLine.BoolVar(&vpn, "V", false, "enable android vpn mode.(DO NOT USE. Only for shadowsocks-android)")
 
 	// server only
 	commandLine.BoolVar(&isServer, "s", false, "is server")
@@ -82,39 +82,9 @@ func main() {
 	commandLine.BoolVar(&genCert, "gen-cert", false, "[This is a helper function]: generate a certificate, store it's key to [-key] and cert to [-cert], print cert in base64 format without padding characters")
 	commandLine.BoolVar(&showVersion, "v", false, "output version info and exit")
 
-	sip003Args, err := core.GetSIP003Args()
+	err := commandLine.Parse(os.Args[1:])
 	if err != nil {
-		log.Fatalf("main: sip003 error: %v", err)
-	}
-
-	// overwrite args from env
-	if sip003Args != nil {
-		log.Print("main: simple-tls is running as a sip003 plugin")
-
-		opts, err := core.FormatSSPluginOptions(sip003Args.SS_PLUGIN_OPTIONS)
-		if err != nil {
-			log.Fatalf("main: invalid sip003 SS_PLUGIN_OPTIONS: %v", err)
-		}
-
-		if err := commandLine.Parse(opts); err != nil {
-			log.Printf("main: WARNING: sip003Args: commandLine.Parse: %v", err)
-		}
-
-		if isServer {
-			dstAddr = sip003Args.GetLocalAddr()
-			bindAddr = sip003Args.GetRemoteAddr()
-		} else {
-			bindAddr = sip003Args.GetLocalAddr()
-			dstAddr = sip003Args.GetRemoteAddr()
-		}
-		tfo = tfo || sip003Args.TFO
-		vpn = vpn || sip003Args.VPN
-
-	} else {
-		err := commandLine.Parse(os.Args[1:])
-		if err != nil {
-			log.Fatalf("main: commandLine.Parse: %v", err)
-		}
+		log.Fatalf("main: invalid arg: %v", err)
 	}
 
 	// display version
@@ -169,6 +139,39 @@ func main() {
 		fmt.Printf("%s\n", certBase64)
 		fmt.Println("Copy this string and import it to client using -cca option")
 		return
+	}
+
+	// overwrite args from env
+	sip003Args, err := core.GetSIP003Args()
+	if err != nil {
+		log.Fatalf("main: sip003 error: %v", err)
+	}
+	if sip003Args != nil {
+		log.Print("main: simple-tls is running as a sip003 plugin")
+
+		if isServer {
+			dstAddr = sip003Args.GetLocalAddr()
+			bindAddr = sip003Args.GetRemoteAddr()
+		} else {
+			bindAddr = sip003Args.GetLocalAddr()
+			dstAddr = sip003Args.GetRemoteAddr()
+		}
+
+		_, vpn = sip003Args.SS_PLUGIN_OPTIONS["V"]
+
+		_, sendPaddingData = sip003Args.SS_PLUGIN_OPTIONS["pd"]
+		serverName, _ = sip003Args.SS_PLUGIN_OPTIONS["n"]
+		ca, _ = sip003Args.SS_PLUGIN_OPTIONS["ca"]
+		cca, _ = sip003Args.SS_PLUGIN_OPTIONS["cca"]
+		_, insecureSkipVerify = sip003Args.SS_PLUGIN_OPTIONS["no-verify"]
+
+		timeoutStr, _ := sip003Args.SS_PLUGIN_OPTIONS["t"]
+		if len(timeoutStr) != 0 {
+			timeoutFlag, err = strconv.Atoi(timeoutStr)
+			if err != nil {
+				log.Fatalf("invalid string %s for arg timeout", timeoutStr)
+			}
+		}
 	}
 
 	timeout = time.Duration(timeoutFlag) * time.Second

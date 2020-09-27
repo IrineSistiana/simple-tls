@@ -25,7 +25,6 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-//TCP_MAXSEG TCP_NODELAY SO_SND/RCVBUF etc..
 func (c *TcpConfig) setSockOpt(uintFd uintptr) {
 	if c == nil {
 		return

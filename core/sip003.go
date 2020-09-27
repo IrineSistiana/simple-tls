@@ -19,7 +19,6 @@ package core
 
 import (
 	"errors"
-	"flag"
 	"net"
 	"os"
 	"strings"
@@ -33,10 +32,10 @@ type SIP003Args struct {
 	SS_REMOTE_PORT    string
 	SS_LOCAL_HOST     string
 	SS_LOCAL_PORT     string
-	SS_PLUGIN_OPTIONS string
-	VPN               bool
-	TFO               bool
+	SS_PLUGIN_OPTIONS SpoArgs
 }
+
+type SpoArgs map[string]string
 
 func (args *SIP003Args) GetRemoteAddr() string {
 	return net.JoinHostPort(args.SS_REMOTE_HOST, args.SS_REMOTE_PORT)
@@ -62,38 +61,29 @@ func GetSIP003Args() (*SIP003Args, error) {
 		return nil, nil // can't find any sip003 arg
 	}
 
-	additional := flag.NewFlagSet("additional", flag.ContinueOnError)
-	tfo := additional.Bool("fast-open", false, "")
-	vpn := additional.Bool("V", false, "")
-	additional.Parse(os.Args[1:])
-
 	return &SIP003Args{
 		SS_REMOTE_HOST:    srh,
 		SS_REMOTE_PORT:    srp,
 		SS_LOCAL_HOST:     slh,
 		SS_LOCAL_PORT:     slp,
-		SS_PLUGIN_OPTIONS: spo,
-
-		TFO: *tfo,
-		VPN: *vpn,
+		SS_PLUGIN_OPTIONS: formatSSPluginOptions(spo),
 	}, nil
 }
 
-//FormatSSPluginOptions formats SS_PLUGIN_OPTIONS to command alike formation, `-s -a value`
-func FormatSSPluginOptions(spo string) ([]string, error) {
-	commandLineOption := make([]string, 0)
+func formatSSPluginOptions(spo string) SpoArgs {
+	spoArgs := make(SpoArgs)
 	op := strings.Split(spo, ";")
 	for _, so := range op {
 		optionPair := strings.SplitN(so, "=", 2)
 		switch len(optionPair) {
 		case 1:
-			commandLineOption = append(commandLineOption, "-"+optionPair[0])
+			spoArgs[optionPair[0]] = ""
 		case 2:
-			commandLineOption = append(commandLineOption, "-"+optionPair[0], optionPair[1])
+			spoArgs[optionPair[0]] = optionPair[1]
 		default:
 			panic("unexpected pair size")
 		}
 	}
 
-	return commandLineOption, nil
+	return spoArgs
 }
