@@ -79,6 +79,7 @@ func main() {
 	commandLine.BoolVar(&tfo, "fast-open", false, "enable tfo, only available on linux 4.11+")
 	commandLine.IntVar(&cpu, "cpu", runtime.NumCPU(), "the maximum number of CPUs that can be executing simultaneously")
 
+	// helper commands
 	commandLine.BoolVar(&genCert, "gen-cert", false, "[This is a helper function]: generate a certificate, store it's key to [-key] and cert to [-cert], print cert in base64 format without padding characters")
 	commandLine.BoolVar(&showVersion, "v", false, "output version info and exit")
 
@@ -157,21 +158,48 @@ func main() {
 			dstAddr = sip003Args.GetRemoteAddr()
 		}
 
+		// android only
 		_, vpn = sip003Args.SS_PLUGIN_OPTIONS["V"]
 
-		_, sendPaddingData = sip003Args.SS_PLUGIN_OPTIONS["pd"]
-		serverName, _ = sip003Args.SS_PLUGIN_OPTIONS["n"]
-		ca, _ = sip003Args.SS_PLUGIN_OPTIONS["ca"]
-		cca, _ = sip003Args.SS_PLUGIN_OPTIONS["cca"]
-		_, insecureSkipVerify = sip003Args.SS_PLUGIN_OPTIONS["no-verify"]
+		var ok bool
+		var s string
 
-		timeoutStr, _ := sip003Args.SS_PLUGIN_OPTIONS["t"]
-		if len(timeoutStr) != 0 {
-			timeoutFlag, err = strconv.Atoi(timeoutStr)
-			if err != nil {
-				log.Fatalf("invalid string %s for arg timeout", timeoutStr)
-			}
+		s, _ = sip003Args.SS_PLUGIN_OPTIONS["b"]
+		setStrIfNotEmpty(&bindAddr, s)
+		s, _ = sip003Args.SS_PLUGIN_OPTIONS["d"]
+		setStrIfNotEmpty(&dstAddr, s)
+		_, ok = sip003Args.SS_PLUGIN_OPTIONS["pd"]
+		sendPaddingData = sendPaddingData || ok
+
+		// client
+		s, _ = sip003Args.SS_PLUGIN_OPTIONS["n"]
+		setStrIfNotEmpty(&serverName, s)
+		s, _ = sip003Args.SS_PLUGIN_OPTIONS["ca"]
+		setStrIfNotEmpty(&ca, s)
+		s, _ = sip003Args.SS_PLUGIN_OPTIONS["cca"]
+		setStrIfNotEmpty(&cca, s)
+		_, ok = sip003Args.SS_PLUGIN_OPTIONS["no-verify"]
+		insecureSkipVerify = insecureSkipVerify || ok
+
+		// server
+		_, ok = sip003Args.SS_PLUGIN_OPTIONS["s"]
+		isServer = isServer || ok
+		s, _ = sip003Args.SS_PLUGIN_OPTIONS["cert"]
+		setStrIfNotEmpty(&cert, s)
+		s, _ = sip003Args.SS_PLUGIN_OPTIONS["key"]
+		setStrIfNotEmpty(&key, s)
+
+		// etc
+		s, _ = sip003Args.SS_PLUGIN_OPTIONS["t"]
+		if err := setIntIfNotZero(&timeoutFlag, s); err != nil {
+			log.Fatalf("main: invalid timeout value, %v", err)
 		}
+		s, _ = sip003Args.SS_PLUGIN_OPTIONS["cpu"]
+		if err := setIntIfNotZero(&cpu, s); err != nil {
+			log.Fatalf("main: invalid cpu number, %v", err)
+		}
+		_, ok = sip003Args.SS_PLUGIN_OPTIONS["fast-open"]
+		tfo = tfo || ok
 	}
 
 	timeout = time.Duration(timeoutFlag) * time.Second
@@ -265,4 +293,23 @@ func main() {
 			log.Fatalf("main: doServer: %v", err)
 		}
 	}
+}
+
+func setStrIfNotEmpty(dst *string, src string) {
+	if len(src) != 0 {
+		*dst = src
+	}
+}
+
+func setIntIfNotZero(dst *int, src string) error {
+	if len(src) != 0 {
+		i, err := strconv.Atoi(src)
+		if err != nil {
+			return fmt.Errorf("string %s is not an int", src)
+		}
+		if i > 0 {
+			*dst = i
+		}
+	}
+	return nil
 }
