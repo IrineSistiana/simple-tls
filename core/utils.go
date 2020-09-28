@@ -98,7 +98,8 @@ func GenerateCertificate(serverName string) (dnsName string, keyPEM, certPEM []b
 }
 
 func randServerName() string {
-	return fmt.Sprintf("%s.%s", randStr(mathRand.Intn(5)+3), randStr(mathRand.Intn(3)+1))
+	r := mathRand.New(mathRand.NewSource(time.Now().UnixNano()))
+	return fmt.Sprintf("%s.%s", randStr(r.Intn(5)+3), randStr(r.Intn(3)+1))
 }
 
 func randStr(length int) string {
