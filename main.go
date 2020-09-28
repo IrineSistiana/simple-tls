@@ -41,7 +41,6 @@ import (
 var version = "unknown/dev"
 
 func main() {
-	log.Printf("main: simple-tls %s", version)
 	go func() {
 		//wait signals
 		osSignals := make(chan os.Signal, 1)
@@ -150,14 +149,6 @@ func main() {
 	if sip003Args != nil {
 		log.Print("main: simple-tls is running as a sip003 plugin")
 
-		if isServer {
-			dstAddr = sip003Args.GetLocalAddr()
-			bindAddr = sip003Args.GetRemoteAddr()
-		} else {
-			bindAddr = sip003Args.GetLocalAddr()
-			dstAddr = sip003Args.GetRemoteAddr()
-		}
-
 		// android only
 		_, vpn = sip003Args.SS_PLUGIN_OPTIONS["V"]
 
@@ -200,6 +191,14 @@ func main() {
 		}
 		_, ok = sip003Args.SS_PLUGIN_OPTIONS["fast-open"]
 		tfo = tfo || ok
+
+		if isServer {
+			dstAddr = sip003Args.GetLocalAddr()
+			bindAddr = sip003Args.GetRemoteAddr()
+		} else {
+			bindAddr = sip003Args.GetLocalAddr()
+			dstAddr = sip003Args.GetRemoteAddr()
+		}
 	}
 
 	timeout = time.Duration(timeoutFlag) * time.Second
@@ -211,6 +210,8 @@ func main() {
 	if len(dstAddr) == 0 {
 		log.Fatal("main: destination addr is required")
 	}
+
+	log.Printf("main: simple-tls %s (go version: %s, os: %s, arch: %s)", version, runtime.Version(), runtime.GOOS, runtime.GOARCH)
 
 	if isServer {
 		var certificates []tls.Certificate
