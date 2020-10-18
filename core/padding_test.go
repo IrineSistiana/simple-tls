@@ -25,32 +25,6 @@ import (
 	"testing"
 )
 
-func Test_paddingConn_Read_Write_Small(t *testing.T) {
-	c1, c2 := net.Pipe()
-	pc1 := newPaddingConn(c1, true, true)
-	pc2 := newPaddingConn(c2, true, true)
-
-	dataSize := 64 * 1024 * 2
-	data := make([]byte, dataSize)
-	buf := make([]byte, dataSize)
-	rand.Read(data)
-
-	go func() {
-		pc1.writePadding(512)
-		pc1.Write(data)
-		pc1.Close()
-	}()
-
-	n, err := io.ReadFull(pc2, buf)
-	if n < dataSize {
-		t.Fatal(err)
-	}
-
-	if !bytes.Equal(data, buf) {
-		t.Fatal("data corrupted")
-	}
-}
-
 func Test_paddingConn_Read_Write(t *testing.T) {
 	c1, c2 := net.Pipe()
 	pc1 := newPaddingConn(c1, true, true)
@@ -65,7 +39,7 @@ func Test_paddingConn_Read_Write(t *testing.T) {
 		chunkSize := 128 * 1024
 		for i := 0; i < dataSize; i += chunkSize {
 			pc1.Write(data[i : i+chunkSize])
-			pc1.writePadding(512)
+			pc1.tryWritePadding(512)
 		}
 		pc1.Close()
 	}()

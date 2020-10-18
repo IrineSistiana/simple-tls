@@ -60,10 +60,41 @@ type paddingConn struct {
 }
 
 func newPaddingConn(c net.Conn, paddingInRead, paddingOnWrite bool) *paddingConn {
-	return &paddingConn{Conn: c, paddingInRead: paddingInRead, paddingOnWrite: paddingOnWrite, wl: newLocker()}
+	pc := &paddingConn{
+		Conn:           c,
+		paddingInRead:  paddingInRead,
+		paddingOnWrite: paddingOnWrite,
+		wl:             newLocker(),
+	}
+
+	return pc
 }
 
 func (c *paddingConn) Read(b []byte) (n int, err error) {
+	return c.read(b)
+}
+
+func (c *paddingConn) Write(b []byte) (n int, err error) {
+	if !c.paddingOnWrite {
+		return c.Conn.Write(b)
+	}
+	return c.writeFrame(headerData, b, false)
+}
+
+var paddingHeaderPool = sync.Pool{New: func() interface{} { return make([]byte, 3) }}
+
+func (c *paddingConn) readHeader() (t frameType, l uint16, err error) {
+	h := paddingHeaderPool.Get().([]byte)
+	defer paddingHeaderPool.Put(h)
+
+	_, err = io.ReadFull(c.Conn, h)
+	if err != nil {
+		return 0, 0, err
+	}
+	return frameType(h[0]), uint16(h[1])<<8 | uint16(h[2]), nil
+}
+
+func (c *paddingConn) read(b []byte) (n int, err error) {
 	if !c.paddingInRead {
 		return c.Conn.Read(b)
 	}
@@ -114,26 +145,6 @@ read:
 	}
 }
 
-var paddingHeaderPool = sync.Pool{New: func() interface{} { return make([]byte, 3) }}
-
-func (c *paddingConn) readHeader() (t frameType, l uint16, err error) {
-	h := paddingHeaderPool.Get().([]byte)
-	defer paddingHeaderPool.Put(h)
-
-	_, err = io.ReadFull(c.Conn, h)
-	if err != nil {
-		return 0, 0, err
-	}
-	return frameType(h[0]), uint16(h[1])<<8 | uint16(h[2]), nil
-}
-
-func (c *paddingConn) Write(b []byte) (n int, err error) {
-	if !c.paddingOnWrite {
-		return c.Conn.Write(b)
-	}
-	return c.writeFrame(headerData, b, false)
-}
-
 var errPaddingDisabled = errors.New("connection padding opt is disabled")
 
 func (c *paddingConn) writePadding(l uint16) (n int, err error) {
@@ -143,17 +154,13 @@ func (c *paddingConn) writePadding(l uint16) (n int, err error) {
 	return c.writeFrame(headerPadding, zeros[:l], false)
 }
 
-func (c *paddingConn) tryWritePaddingInOtherGoRoutine(l uint16) {
-	if !c.paddingOnWrite {
-		return
+// tryWritePadding will only write padding data when c is idle.
+func (c *paddingConn) tryWritePadding(l uint16) (n int, err error) {
+	if c.wl.tryLock() {
+		defer c.wl.unlock()
+		return c.writeFrame(headerPadding, zeros[:l], true)
 	}
-
-	if c.wl.tryLock() == true {
-		go func() {
-			c.writeFrame(headerPadding, zeros[:l], true)
-			c.wl.unlock()
-		}()
-	}
+	return 0, nil
 }
 
 // wBufPool is a 64Kb buffer pool

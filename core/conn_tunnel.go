@@ -124,7 +124,7 @@ func copyBuffer(dst net.Conn, src net.Conn, buf []byte, timeout time.Duration, t
 				// don not pad when read is continuous
 				if time.Since(previousRead) > paddingIntervalThreshold {
 					tc.setDeadline(ps, time.Now().Add(timeout))
-					ps.tryWritePaddingInOtherGoRoutine(randomPaddingSize())
+					ps.tryWritePadding(randomPaddingSize())
 				}
 			}
 		}
