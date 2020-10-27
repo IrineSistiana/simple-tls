@@ -67,6 +67,7 @@ func main() {
 	commandLine.StringVar(&ca, "ca", "", "PEM CA file path")
 	commandLine.StringVar(&cca, "cca", "", "base64 encoded PEM CA")
 	commandLine.BoolVar(&insecureSkipVerify, "no-verify", false, "client won't verify the server's certificate chain and host name")
+	commandLine.BoolVar(&vpn, "V", false, "DO NOT USE, this is for android vpn mode")
 
 	// server only
 	commandLine.BoolVar(&isServer, "s", false, "is server")
@@ -149,12 +150,16 @@ func main() {
 	if sip003Args != nil {
 		log.Print("main: simple-tls is running as a sip003 plugin")
 
-		// android only
-		_, vpn = sip003Args.SS_PLUGIN_OPTIONS["V"]
-
 		var ok bool
 		var s string
 
+		// android only
+		_, ok = sip003Args.SS_PLUGIN_OPTIONS["V"]
+		vpn = vpn || ok
+		_, ok = sip003Args.SS_PLUGIN_OPTIONS["__android_vpn"]
+		vpn = vpn || ok
+
+		// common
 		s, _ = sip003Args.SS_PLUGIN_OPTIONS["b"]
 		setStrIfNotEmpty(&bindAddr, s)
 		s, _ = sip003Args.SS_PLUGIN_OPTIONS["d"]
