@@ -50,9 +50,9 @@ func main() {
 		os.Exit(0)
 	}()
 
-	var bindAddr, dstAddr, serverName, cca, ca, cert, key string
-	var insecureSkipVerify, isServer, sendPaddingData, tfo, vpn, genCert, showVersion bool
-	var cpu int
+	var bindAddr, dstAddr, auth, serverName, cca, ca, cert, key string
+	var insecureSkipVerify, isServer, tfo, vpn, genCert, showVersion bool
+	var cpu, mux int
 	var timeout time.Duration
 	var timeoutFlag int
 
@@ -60,9 +60,10 @@ func main() {
 
 	commandLine.StringVar(&bindAddr, "b", "", "[Host:Port] bind address")
 	commandLine.StringVar(&dstAddr, "d", "", "[Host:Port] destination address")
-	commandLine.BoolVar(&sendPaddingData, "pd", false, "send padding data occasionally to against traffic analysis")
+	commandLine.StringVar(&auth, "auth", "", "server password")
 
 	// client only
+	commandLine.IntVar(&mux, "mux", 0, "enable mux")
 	commandLine.StringVar(&serverName, "n", "", "server name")
 	commandLine.StringVar(&ca, "ca", "", "PEM CA file path")
 	commandLine.StringVar(&cca, "cca", "", "base64 encoded PEM CA")
@@ -80,7 +81,7 @@ func main() {
 	commandLine.IntVar(&cpu, "cpu", runtime.NumCPU(), "the maximum number of CPUs that can be executing simultaneously")
 
 	// helper commands
-	commandLine.BoolVar(&genCert, "gen-cert", false, "[This is a helper function]: generate a certificate, store it's key to [-key] and cert to [-cert], print cert in base64 format without padding characters")
+	commandLine.BoolVar(&genCert, "gen-cert", false, "[This is a helper function]: generate a certificate with dns name [-n], store it's key to [-key] and cert to [-cert], print cert in base64 format without padding characters")
 	commandLine.BoolVar(&showVersion, "v", false, "output version info and exit")
 
 	err := commandLine.Parse(os.Args[1:])
@@ -164,8 +165,12 @@ func main() {
 		setStrIfNotEmpty(&bindAddr, s)
 		s, _ = sip003Args.SS_PLUGIN_OPTIONS["d"]
 		setStrIfNotEmpty(&dstAddr, s)
-		_, ok = sip003Args.SS_PLUGIN_OPTIONS["pd"]
-		sendPaddingData = sendPaddingData || ok
+		s, _ = sip003Args.SS_PLUGIN_OPTIONS["auth"]
+		setStrIfNotEmpty(&auth, s)
+		s, _ = sip003Args.SS_PLUGIN_OPTIONS["mux"]
+		if err := setIntIfNotZero(&mux, s); err != nil {
+			log.Fatalf("main: invalid mux value, %v", err)
+		}
 
 		// client
 		s, _ = sip003Args.SS_PLUGIN_OPTIONS["n"]
@@ -251,17 +256,22 @@ func main() {
 			log.Fatalf("main: net.Listen: %v", err)
 		}
 
-		err = core.DoServer(l, certificates, dstAddr, sendPaddingData, timeout)
+		server := core.Server{
+			Listener:     l,
+			Auth:         auth,
+			Dst:          dstAddr,
+			Certificates: certificates,
+			Timeout:      timeout,
+		}
+
+		err = server.ActiveAndServe()
 		if err != nil {
 			log.Fatalf("main: doServer: %v", err)
 		}
 
 	} else { // do client
-		var host string
-		if len(serverName) != 0 {
-			host = serverName
-		} else {
-			host = strings.SplitN(bindAddr, ":", 2)[0]
+		if len(serverName) == 0 {
+			serverName = strings.SplitN(dstAddr, ":", 2)[0]
 		}
 		var rootCAs *x509.CertPool
 
@@ -275,7 +285,7 @@ func main() {
 
 			rootCAs = x509.NewCertPool()
 			if ok := rootCAs.AppendCertsFromPEM(pem); !ok {
-				log.Fatal("main: AppendCertsFromPEM failed, cca is invaild")
+				log.Fatal("main: AppendCertsFromPEM failed, cca is invalid")
 			}
 		case len(ca) != 0:
 			rootCAs = x509.NewCertPool()
@@ -284,7 +294,7 @@ func main() {
 				log.Fatalf("main: ReadFile ca [%s], %v", ca, err)
 			}
 			if ok := rootCAs.AppendCertsFromPEM(certPEMBlock); !ok {
-				log.Fatal("main: AppendCertsFromPEM failed, ca is invaild")
+				log.Fatal("main: AppendCertsFromPEM failed, ca is invalid")
 			}
 		}
 
@@ -294,7 +304,20 @@ func main() {
 			log.Fatalf("main: net.Listen: %v", err)
 		}
 
-		err = core.DoClient(l, dstAddr, host, rootCAs, insecureSkipVerify, sendPaddingData, timeout, vpn, tfo)
+		client := core.Client{
+			Listener:           l,
+			ServerAddr:         dstAddr,
+			Auth:               auth,
+			ServerName:         serverName,
+			CertPool:           rootCAs,
+			InsecureSkipVerify: insecureSkipVerify,
+			Timeout:            timeout,
+			AndroidVPNMode:     vpn,
+			TFO:                tfo,
+			Mux:                mux,
+		}
+
+		err = client.ActiveAndServe()
 		if err != nil {
 			log.Fatalf("main: doServer: %v", err)
 		}

@@ -17,35 +17,7 @@
 
 package core
 
-type locker struct {
-	c chan struct{}
-}
-
-func newLocker() *locker {
-	l := &locker{
-		c: make(chan struct{}, 1),
-	}
-	l.c <- struct{}{}
-	return l
-}
-
-func (l *locker) lock() {
-	<-l.c
-}
-
-func (l *locker) tryLock() bool {
-	select {
-	case <-l.c:
-		return true
-	default:
-		return false
-	}
-}
-
-func (l *locker) unlock() {
-	select {
-	case l.c <- struct{}{}:
-	default:
-		panic("locker: unlocked twice")
-	}
-}
+const (
+	modePlain byte = iota
+	modeMux
+)

@@ -25,15 +25,10 @@ import (
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/pem"
-	"errors"
 	"fmt"
 	"math/big"
 	mathRand "math/rand"
 	"time"
-)
-
-var (
-	errNotTLS13 = errors.New("not a tls 1.3 connection")
 )
 
 func tls13HandshakeWithTimeout(c *tls.Conn, timeout time.Duration) error {
@@ -42,8 +37,8 @@ func tls13HandshakeWithTimeout(c *tls.Conn, timeout time.Duration) error {
 		return err
 	}
 	c.SetDeadline(time.Time{})
-	if c.ConnectionState().Version != tls.VersionTLS13 {
-		return errNotTLS13
+	if cVar := c.ConnectionState().Version; cVar != tls.VersionTLS13 {
+		return fmt.Errorf("unexpected tls version: %x", cVar)
 	}
 	return nil
 }

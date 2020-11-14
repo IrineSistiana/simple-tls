@@ -30,7 +30,6 @@ import (
 )
 
 func Test_main(t *testing.T) {
-
 	dataSize := 512 * 1024
 	randData := func() []byte {
 		b := make([]byte, dataSize)
@@ -69,7 +68,7 @@ func Test_main(t *testing.T) {
 	}()
 
 	// test1
-	test := func(sendPaddingData bool) {
+	test := func(t *testing.T, mux int) {
 		// start server
 		_, keyPEM, certPEM, err := GenerateCertificate("example.com")
 		cert, err := tls.X509KeyPair(certPEM, keyPEM)
@@ -83,7 +82,13 @@ func Test_main(t *testing.T) {
 		}
 		defer serverListener.Close()
 
-		go DoServer(serverListener, []tls.Certificate{cert}, echoListener.Addr().String(), sendPaddingData, timeout)
+		server := Server{
+			Listener:        serverListener,
+			Dst:             echoListener.Addr().String(),
+			Certificates:    []tls.Certificate{cert},
+			Timeout:         timeout,
+		}
+		go server.ActiveAndServe()
 
 		// start client
 		clientListener, err := net.Listen("tcp", "127.0.0.1:0")
@@ -98,17 +103,28 @@ func Test_main(t *testing.T) {
 			t.Fatal("appendCertsFromPEM failed")
 		}
 
-		go DoClient(clientListener, serverListener.Addr().String(), "example.com", caPool, false, sendPaddingData, timeout, false, false)
+		client := Client{
+			Listener:           clientListener,
+			ServerAddr:         serverListener.Addr().String(),
+			ServerName:         "example.com",
+			CertPool:           caPool,
+			InsecureSkipVerify: false,
+			Mux:                mux,
+			Timeout:            timeout,
+			AndroidVPNMode:     false,
+			TFO:                false,
+		}
+		go client.ActiveAndServe()
 
 		log.Printf("echo: %v, server: %v client: %v", echoListener.Addr(), serverListener.Addr(), clientListener.Addr())
-		conn, err := net.Dial("tcp", clientListener.Addr().String())
-		if err != nil {
-			t.Fatal(err)
-		}
-		data := randData()
-		buf := make([]byte, dataSize)
 
 		for i := 0; i < 10; i++ {
+			conn, err := net.Dial("tcp", clientListener.Addr().String())
+			if err != nil {
+				t.Fatal(err)
+			}
+			data := randData()
+			buf := make([]byte, dataSize)
 			_, err = conn.Write(data)
 			if err != nil {
 				t.Fatal(err)
@@ -124,11 +140,17 @@ func Test_main(t *testing.T) {
 		}
 	}
 
-	// test tls
-	t.Log("testing tls")
-	test(false)
+	tests := []struct {
+		name string
+		mux  int
+	}{
+		{"plain", 0},
+		{"mux", 5},
+	}
 
-	// test tls with random header
-	t.Log("testing tls with random header")
-	test(true)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			test(t, tt.mux)
+		})
+	}
 }

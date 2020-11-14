@@ -18,27 +18,56 @@
 package core
 
 import (
+	"crypto/md5"
 	"crypto/tls"
 	"crypto/x509"
 	"fmt"
+	"github.com/IrineSistiana/ctunnel"
 	"log"
 	"net"
 	"time"
 )
 
-func DoClient(l net.Listener, serverAddr, hostName string, caPool *x509.CertPool, insecureSkipVerify, sendPaddingData bool, timeout time.Duration, vpnMode, tfo bool) error {
-	dialer := net.Dialer{
+type Client struct {
+	Listener           net.Listener
+	ServerAddr         string
+	Auth               string
+	ServerName         string
+	CertPool           *x509.CertPool
+	InsecureSkipVerify bool
+	Timeout            time.Duration
+	AndroidVPNMode     bool
+	TFO                bool
+	Mux                int
+
+	dialer    net.Dialer
+	auth      [16]byte
+	tlsConfig *tls.Config
+	muxPool   *muxPool // not nil if Mux > 0
+}
+
+func (c *Client) ActiveAndServe() error {
+	c.dialer = net.Dialer{
 		Timeout: time.Second * 5,
-		Control: GetControlFunc(&TcpConfig{AndroidVPN: vpnMode, EnableTFO: tfo}),
+		Control: GetControlFunc(&TcpConfig{AndroidVPN: c.AndroidVPNMode, EnableTFO: c.TFO}),
 	}
-	tlsConfig := new(tls.Config)
-	tlsConfig.ClientSessionCache = tls.NewLRUClientSessionCache(64)
-	tlsConfig.ServerName = hostName
-	tlsConfig.RootCAs = caPool
-	tlsConfig.InsecureSkipVerify = insecureSkipVerify
+
+	c.tlsConfig = new(tls.Config)
+	c.tlsConfig.NextProtos = []string{"http/1.1", "h2"}
+	c.tlsConfig.ServerName = c.ServerName
+	c.tlsConfig.RootCAs = c.CertPool
+	c.tlsConfig.InsecureSkipVerify = c.InsecureSkipVerify
+
+	if len(c.Auth) > 0 {
+		c.auth = md5.Sum([]byte(c.Auth))
+	}
+
+	if c.Mux > 0 {
+		c.muxPool = newMuxPool(c.dialServerConn, c.Mux)
+	}
 
 	for {
-		localConn, err := l.Accept()
+		localConn, err := c.Listener.Accept()
 		if err != nil {
 			return fmt.Errorf("l.Accept(): %w", err)
 		}
@@ -46,29 +75,60 @@ func DoClient(l net.Listener, serverAddr, hostName string, caPool *x509.CertPool
 		go func() {
 			defer localConn.Close()
 
-			serverRawConn, err := dialer.Dial("tcp", serverAddr)
-			if err != nil {
-				log.Printf("ERROR: DoClient: dialer.Dial: %v", err)
-				return
-			}
-			defer serverRawConn.Close()
-
-			serverTLSConn := tls.Client(serverRawConn, tlsConfig)
-			if err := tls13HandshakeWithTimeout(serverTLSConn, time.Second*5); err != nil {
-				log.Printf("ERROR: DoClient: tlsHandshakeTimeout: %v", err)
-				return
-			}
-
 			var serverConn net.Conn
-			if sendPaddingData {
-				serverConn = newPaddingConn(serverTLSConn, true, false)
+			if c.Mux > 0 {
+				stream, _, err := c.muxPool.GetStream()
+				if err != nil {
+					log.Printf("ERROR: muxPool.GetStream: %v", err)
+					return
+				}
+				serverConn = stream
 			} else {
-				serverConn = serverTLSConn
+				conn, err := c.dialServerConn()
+				if err != nil {
+					log.Printf("ERROR: dialServerConn: %v", err)
+					return
+				}
+				serverConn = conn
 			}
+			defer serverConn.Close()
 
-			if err := openTunnel(localConn, serverConn, timeout); err != nil {
-				log.Printf("ERROR: DoClient: openTunnel: %v", err)
+			if err := ctunnel.OpenTunnel(localConn, serverConn, c.Timeout); err != nil {
+				log.Printf("ERROR: ActiveAndServe: openTunnel: %v", err)
 			}
 		}()
 	}
+}
+
+func (c *Client) dialServerConn() (serverConn net.Conn, err error) {
+	serverRawConn, err := c.dialer.Dial("tcp", c.ServerAddr)
+	if err != nil {
+		return nil, err
+	}
+
+	serverTLSConn := tls.Client(serverRawConn, c.tlsConfig)
+	if err := tls13HandshakeWithTimeout(serverTLSConn, time.Second*5); err != nil {
+		serverRawConn.Close()
+		return nil, err
+	}
+
+	// write auth
+	if len(c.Auth) > 0 {
+		if _, err := serverTLSConn.Write(c.auth[:]); err != nil {
+			serverRawConn.Close()
+			return nil, fmt.Errorf("failed to write auth: %w", err)
+		}
+	}
+
+	// write mode
+	mode := modePlain
+	if c.Mux > 0 {
+		mode = modeMux
+	}
+	if _, err := serverTLSConn.Write([]byte{mode}); err != nil {
+		serverRawConn.Close()
+		return nil, fmt.Errorf("failed to write mode: %w", err)
+	}
+
+	return serverTLSConn, nil
 }

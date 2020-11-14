@@ -18,21 +18,40 @@
 package core
 
 import (
+	"bytes"
+	"crypto/md5"
 	"crypto/tls"
 	"fmt"
+	"github.com/IrineSistiana/ctunnel"
+	"github.com/xtaci/smux"
+	"io"
 	"log"
 	"net"
 	"time"
 )
 
-func DoServer(l net.Listener, certificates []tls.Certificate, dst string, sendPaddingData bool, timeout time.Duration) error {
+type Server struct {
+	Listener net.Listener
+	Dst      string
+	Auth     string
 
+	Certificates []tls.Certificate
+	Timeout      time.Duration
+
+	auth [16]byte
+}
+
+func (s *Server) ActiveAndServe() error {
 	tlsConfig := new(tls.Config)
 	tlsConfig.NextProtos = []string{"h2"}
-	tlsConfig.Certificates = certificates
+	tlsConfig.Certificates = s.Certificates
+
+	if len(s.Auth) > 0 {
+		s.auth = md5.Sum([]byte(s.Auth))
+	}
 
 	for {
-		clientRawConn, err := l.Accept()
+		clientRawConn, err := s.Listener.Accept()
 		if err != nil {
 			return fmt.Errorf("l.Accept(): %w", err)
 		}
@@ -41,33 +60,96 @@ func DoServer(l net.Listener, certificates []tls.Certificate, dst string, sendPa
 			clientTLSConn := tls.Server(clientRawConn, tlsConfig)
 			defer clientTLSConn.Close()
 
-			// check client conn before dialing dst
+			// handshake
 			if err := tls13HandshakeWithTimeout(clientTLSConn, time.Second*5); err != nil {
-				log.Printf("ERROR: DoServer: %s, tls13HandshakeWithTimeout: %v", clientRawConn.RemoteAddr(), err)
+				log.Printf("ERROR: %s, tls13HandshakeWithTimeout: %v", clientRawConn.RemoteAddr(), err)
 				return
 			}
 
-			if err := handleClientConn(clientTLSConn, sendPaddingData, dst, timeout); err != nil {
-				log.Printf("ERROR: DoServer: %s, handleClientConn: %v", clientRawConn.RemoteAddr(), err)
+			// check auth
+			if len(s.Auth) > 0 {
+				auth := make([]byte, 16)
+				if _, err := io.ReadFull(clientTLSConn, auth); err != nil {
+					log.Printf("ERROR: %s, read client auth header: %v", clientRawConn.RemoteAddr(), err)
+					return
+				}
+
+				if !bytes.Equal(s.auth[:], auth) {
+					log.Printf("ERROR: %s, auth failed", clientRawConn.RemoteAddr())
+					discard(clientTLSConn)
+					return
+				}
+			}
+
+			// mode
+			header := make([]byte, 1)
+			if _, err := io.ReadFull(clientTLSConn, header); err != nil {
+				log.Printf("ERROR: %s, read client mode header: %v", clientRawConn.RemoteAddr(), err)
+				return
+			}
+
+			switch header[0] {
+			case modePlain:
+				if err := s.handleClientConn(clientTLSConn); err != nil {
+					log.Printf("ERROR: %s, handleClientConn: %v", clientRawConn.RemoteAddr(), err)
+					return
+				}
+			case modeMux:
+				err := s.handleClientMux(clientTLSConn)
+				if err != nil {
+					log.Printf("ERROR: %s, handleClientMux: %v", clientRawConn.RemoteAddr(), err)
+					return
+				}
+			default:
+				log.Printf("ERROR: %s, invalid header %d", clientRawConn.RemoteAddr(), header[0])
 				return
 			}
 		}()
 	}
 }
 
-func handleClientConn(cc net.Conn, sendPaddingData bool, dst string, timeout time.Duration) (err error) {
-	dstConn, err := net.Dial("tcp", dst)
+func discard(c net.Conn) {
+	c.SetDeadline(time.Now().Add(time.Second * 15))
+	buf := make([]byte, 512)
+	for {
+		_, err := c.Read(buf)
+		if err != nil {
+			return
+		}
+	}
+}
+
+func (s *Server) handleClientConn(cc net.Conn) (err error) {
+	dstConn, err := net.Dial("tcp", s.Dst)
 	if err != nil {
 		return fmt.Errorf("net.Dial: %v", err)
 	}
 	defer dstConn.Close()
 
-	if sendPaddingData {
-		cc = newPaddingConn(cc, false, true)
-	}
-
-	if err := openTunnel(dstConn, cc, timeout); err != nil {
+	if err := ctunnel.OpenTunnel(dstConn, cc, s.Timeout); err != nil {
 		return fmt.Errorf("openTunnel: %v", err)
 	}
 	return nil
+}
+
+func (s *Server) handleClientMux(cc net.Conn) (err error) {
+	sess, err := smux.Server(cc, muxConfig)
+	if err != nil {
+		return err
+	}
+	defer sess.Close()
+
+	for {
+		stream, err := sess.AcceptStream()
+		if err != nil {
+			return nil // suppress smux err
+		}
+		go func() {
+			defer stream.Close()
+			if err := s.handleClientConn(stream); err != nil {
+				log.Printf("ERROR: handleClientMux: %s, handleClientConn: %v", stream.RemoteAddr(), err)
+				return
+			}
+		}()
+	}
 }
