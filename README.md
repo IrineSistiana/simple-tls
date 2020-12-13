@@ -8,7 +8,7 @@ Probably the simplest TLS plugin. It can:
 
 - Protect and obfuscate your connections with real TLS1.3.
 - Easily run as a SIP003 plugin and run on Android platform.
-- Send random data packets at appropriate times. This can change the timing characteristics of data packets in one connection, which can protect you against timing traffic analysis. (optional, experimental) See [documentation](https://github.com/IrineSistiana/simple-tls/wiki/%E6%97%B6%E5%BA%8F%E5%A1%AB%E5%85%85(pd)%E6%A8%A1%E5%BC%8F) (Chinese only).
+- Send random data packets at appropriate times. This can change the timing characteristics of data packets in one connection, which can protect you against timing traffic analysis. (optional, experimental) See [documentation (Chinese only)](https://github.com/IrineSistiana/simple-tls/wiki/%E6%97%B6%E5%BA%8F%E5%A1%AB%E5%85%85(pd)%E6%A8%A1%E5%BC%8F).
 
 ---
 
