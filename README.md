@@ -8,7 +8,7 @@ Probably the simplest TLS plugin. It can:
 
 - Protect and obfuscate your connections with real TLS1.3.
 - Easily run as a SIP003 plugin and run on Android platform.
-- Send random data packets at appropriate times. This can change the timing characteristics of data packets in one connection, which can protect you against timing traffic analysis. (optional, experimental)
+- Send random data packets at appropriate times. This can change the timing characteristics of data packets in one connection, which can protect you against timing traffic analysis. (optional, experimental) See [documentation](https://github.com/IrineSistiana/simple-tls/wiki/%E6%97%B6%E5%BA%8F%E5%A1%AB%E5%85%85(pd)%E6%A8%A1%E5%BC%8F) (Chinese only).
 
 ---
 
@@ -43,7 +43,7 @@ You will need go v1.14 or later.
 
     # Transfer mode (Client and server must have the same mode)
     -pd
-        Enable padding-data mode. Server will send some padding data to against traffic analysis.
+        Enable padding-data mode. Server will send some padding data to protect against traffic analysis.
 
     # Client arguments
     -n string
@@ -59,21 +59,23 @@ You will need go v1.14 or later.
     -s    
         Run as a server.
     -cert string
-        PEM certificate file path
+        PEM certificate file path.
     -key string
-        PEM key file path
+        PEM key file path.
 
     # Other geek's arguments
     -cpu int
-        The maximum number of CPUs that can be executing simultaneously.
+        The maximum number of CPUs to simultaneously use.
     -fast-open
-        Enable tfo, only available on linux kernel 4.11+.
+        Enable [tfo](https://en.wikipedia.org/wiki/TCP_Fast_Open). Only available on Linux kernel 4.11+.
     -t int
-        Idle timeout in sec (default 300).
+        Idle timeout in seconds (default to 300).
 
-    # helper commands
+    # Helper commands
     -gen-cert
-        Quickly generate a ecc certificate.
+        Quickly generate an ECC certificate.
+    -v
+        Print out version information of the current binary.
 
 ## Standalone mode
 
@@ -85,7 +87,7 @@ You will need go v1.14 or later.
 
 ## SIP003 mode
 
-Comply with shadowsocks [SIP003](https://shadowsocks.org/en/spec/Plugin.html) plugin protocol. Shadowsocks will automatically set `-d` and `-b` parameters, no need to set those manually.
+Complies with Shadowsocks [SIP003](https://shadowsocks.org/en/wiki/Plugin.html) plugin protocol. Shadowsocks will automatically set `-d` and `-b` parameters, no need to set those manually.
 
 Take [shadowsocks-libev](https://github.com/shadowsocks/shadowsocks-libev) as an example:
 
@@ -94,21 +96,21 @@ Take [shadowsocks-libev](https://github.com/shadowsocks/shadowsocks-libev) as an
 
 ## Start a server without certificate
 
-You can use `-gen-cert` to quickly generate an ECC certificate.
+You can use `-gen-cert` to quickly generate an [ECC certificate](https://www.digicert.com/faq/ecc.htm).
 
-    simple-tls -gen-cert -n certificate.dnsname -key ./my_ecc_cert.key -cert ./my_ecc_cert.cert 
+    simple-tls -gen-cert -n certificate.dnsname -key ./my_ecc_cert.key -cert ./my_ecc_cert.cert
 
 Or you can just start the server without `-key` and `-cert`. Server will automatically generate a temporary certificate and store it in memory.
 
-**Please note that:** In those cases, client have to import generated cert as CA. See below. Or disable server certificate verify by using `-no-verify`. (not recommended, because this is susceptible to man-in-the-middle attacks.) 
+**Please note that:** In those cases, clients have to import the generated certificate as CA. See below. Else clients need to disable server certificate verification by using `-no-verify`. Not recommended because this is susceptible to man-in-the-middle attacks.
 
 ## How to import CA in client
 
-You can use `-cca` or `-ca` to import a cert or ca-bundle file as CA.
+You can use `-cca` or `-ca` to import a certificate or ca-bundle file as CA.
 
 `-ca` accepts a path.
 
-    simple-tls ... ... -ca ./my.ca.cert
+    simple-tls ... ... -ca ./path/to/my.ca.cert
 
 `-cca` accepts a base64 encoded certificate.
 
@@ -116,11 +118,11 @@ You can use `-cca` or `-ca` to import a cert or ca-bundle file as CA.
 
 ## Android
 
-simple-tls-android is a GUI plugin for [shadowsocks-android](https://github.com/shadowsocks/shadowsocks-android). You need to download and install shadowsocks-android first. It's also an open source software. Source code is available at [here](https://github.com/IrineSistiana/simple-tls-android).
+simple-tls-android is a GUI plugin for [shadowsocks-android](https://github.com/shadowsocks/shadowsocks-android). You need to download and install shadowsocks-android first. It's also an open source software. Source code is available [here](https://github.com/IrineSistiana/simple-tls-android).
 
-<details><summary><code>Screenshot</code></summary><br>
+<details><summary><code>Screenshot</code></summary>
 
-![avatar](/assets/simple-tls-android-screenshot.jpg)
+![screenshot](/assets/simple-tls-android-screenshot.jpg)
 
 </details>
 
