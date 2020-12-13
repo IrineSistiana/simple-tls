@@ -100,7 +100,7 @@
 
     simple-tls -gen-cert -n certificate.dnsname -key ./my_ecc_cert.key -cert ./my_ecc_cert.cert
 
-或者`-key`和`-cert`留空，直接启动服务端。服务端会自己生成一个临时的证书。
+或者`-key`和`-cert`留空，直接启动服务端。服务端会生成一个仅保存在内存中的临时证书。
 
 **请注意：** 这种情况下，客户端需要导入生成的证书作为CA。见下。或者使用`-no-verify`禁用证书验证。不建议，因为有潜在MITM攻击风险。
 
