@@ -122,6 +122,8 @@ simple-tls-android is a GUI plugin for [shadowsocks-android](https://github.com/
 
 <details><summary><code>Screenshot</code></summary>
 
+<br>
+
 ![screenshot](/assets/simple-tls-android-screenshot.jpg)
 
 </details>

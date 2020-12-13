@@ -122,6 +122,8 @@ simple-tls-android是[shadowsocks-android](https://github.com/shadowsocks/shadow
 
 <details><summary><code>屏幕截图</code></summary>
 
+<br>
+
 ![avatar](/assets/simple-tls-android-screenshot.jpg)
 
 </details>
