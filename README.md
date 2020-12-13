@@ -67,7 +67,7 @@ You will need go v1.14 or later.
     -cpu int
         The maximum number of CPUs to simultaneously use.
     -fast-open
-        Enable [tfo](https://en.wikipedia.org/wiki/TCP_Fast_Open). Only available on Linux kernel 4.11+.
+        Enable TCP-Fast-Open. Only available on Linux kernel 4.11+.
     -t int
         Idle timeout in seconds (default to 300).
 

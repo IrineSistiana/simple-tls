@@ -67,7 +67,7 @@
     -cpu int
         最多使用的cpu数
     -fast-open
-        启用[tfo](https://zh.wikipedia.org/wiki/TCP%E5%BF%AB%E9%80%9F%E6%89%93%E5%BC%80)，仅支持Linux内核4.11+
+        启用TCP快速开启，仅支持Linux内核4.11+
     -t int
         空闲超时，以秒记 (默认300)
 
