@@ -102,7 +102,7 @@
 
 或者`-key`和`-cert`留空，直接启动服务端。服务端会自己生成一个临时的证书。
 
-**请注意：** 这种情况下，客户端需要导入生成的证书作为CA。见下。或者使用`-no-verify`禁用证书验证 (不建议，因为有潜在MITM攻击风险)。
+**请注意：** 这种情况下，客户端需要导入生成的证书作为CA。见下。或者使用`-no-verify`禁用证书验证。不建议，因为有潜在MITM攻击风险。
 
 ## 客户端如何导入CA证书
 
@@ -110,7 +110,7 @@
 
 `-ca`接受一个路径。
 
-    simple-tls ... ... -ca ./my.ca.cert
+    simple-tls ... ... -ca ./path/to/my.ca.cert
 
 `-cca`接受一个经base64编码的证书。
 
@@ -124,7 +124,7 @@ simple-tls-android是[shadowsocks-android](https://github.com/shadowsocks/shadow
 
 <br>
 
-![avatar](/assets/simple-tls-android-screenshot.jpg)
+![截屏](/assets/simple-tls-android-screenshot.jpg)
 
 </details>
 
