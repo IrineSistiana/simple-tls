@@ -37,9 +37,9 @@ You will need go v1.14 or later.
 
     # Common arguments
     -b string
-        [Host:Port] bind addr
+        [Host:Port] bind addr.
     -d string
-        [Host:Port] destination addr
+        [Host:Port] destination addr.
 
     # Transfer mode (Client and server must have the same mode)
     -pd
