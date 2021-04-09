@@ -1,4 +1,4 @@
-//     Copyright (C) 2020, IrineSistiana
+//     Copyright (C) 2020-2021, IrineSistiana
 //
 //     This file is part of simple-tls.
 //
@@ -83,10 +83,10 @@ func Test_main(t *testing.T) {
 		defer serverListener.Close()
 
 		server := Server{
-			Listener:        serverListener,
-			Dst:             echoListener.Addr().String(),
-			Certificates:    []tls.Certificate{cert},
-			Timeout:         timeout,
+			Listener:     serverListener,
+			Dst:          echoListener.Addr().String(),
+			Certificates: []tls.Certificate{cert},
+			Timeout:      timeout,
 		}
 		go server.ActiveAndServe()
 
