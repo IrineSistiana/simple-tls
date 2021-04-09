@@ -59,21 +59,23 @@
     -s    
         以服务端运行
     -cert string
-        PEM 证书路径 
+        PEM 证书路径
     -key string
         PEM 密钥路径
 
     # 其他参数
     -cpu int
-        The maximum number of CPUs that can be executing simultaneously
+        最多使用的cpu数
     -fast-open
-        Enable tfo, only available on linux kernel 4.11+
+        启用TCP快速开启，仅支持Linux内核4.11+
     -t int
-        Idle timeout in sec (default 300)
+        空闲超时，以秒记 (默认300)
 
     # 命令
     -gen-cert
         快速生成一个ECC证书
+    -v
+        显示目前程序版本
 
 ## 独立模式
 
@@ -85,7 +87,7 @@
 
 ## SIP003模式
 
-支持[SIP003](https://shadowsocks.org/en/spec/Plugin.html)插件协议。Shadowsocks会自动设置`-d`和`-b`参数，无需手动设置。
+支持[SIP003](https://shadowsocks.org/en/wiki/Plugin.html)插件协议。Shadowsocks会自动设置`-d`和`-b`参数，无需手动设置。
 
 以[shadowsocks-libev](https://github.com/shadowsocks/shadowsocks-libev)为例:
 
@@ -94,13 +96,13 @@
 
 ## 如何无证书时启动服务端
 
-可以用`-gen-cert`命令快速生成一个ECC证书。
+可以用`-gen-cert`命令快速生成一个[ECC证书](https://zhuanlan.zhihu.com/p/57710573)。
 
-    simple-tls -gen-cert -n certificate.dnsname -key ./my_ecc_cert.key -cert ./my_ecc_cert.cert 
+    simple-tls -gen-cert -n certificate.dnsname -key ./my_ecc_cert.key -cert ./my_ecc_cert.cert
 
-或者`-key`和`-cert`留空，直接启动服务端。服务端会自己生成一个临时的证书。
+或者`-key`和`-cert`留空，直接启动服务端。服务端会生成一个仅保存在内存中的临时证书。
 
-**请注意：** 这种情况下，客户端需要导入之前生成的证书作为CA。见下。或者`-no-verify`禁用证书验证(不建议，因为这样有潜在MITM攻击风险)。
+**请注意：** 这种情况下，客户端需要导入生成的证书作为CA。见下。或者使用`-no-verify`禁用证书验证。不建议，因为有潜在MITM攻击风险。
 
 ## 客户端如何导入CA证书
 
@@ -108,9 +110,9 @@
 
 `-ca`接受一个路径。
 
-    simple-tls ... ... -ca ./my.ca.cert
+    simple-tls ... ... -ca ./path/to/my.ca.cert
 
-`-cca`接受一个被base64编码的证书。
+`-cca`接受一个经base64编码的证书。
 
     simple-tls ... ... -cca VkRJWkpCK1R1c3h...4eGdFbz0K==
 
@@ -118,9 +120,11 @@
 
 simple-tls-android是[shadowsocks-android](https://github.com/shadowsocks/shadowsocks-android)的GUI插件，需要先下载shadowsocks-android。simple-tls-android同样是开源软件，源代码在[这里](https://github.com/IrineSistiana/simple-tls-android)。
 
-<details><summary><code>屏幕截图</code></summary><br>
+<details><summary><code>屏幕截图</code></summary>
 
-![avatar](/assets/simple-tls-android-screenshot.jpg)
+<br>
+
+![截屏](/assets/simple-tls-android-screenshot.jpg)
 
 </details>
 
