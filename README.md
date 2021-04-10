@@ -1,130 +1,95 @@
 # simple-tls
 
-[中文](README_zh.md) [English](README.md)
-
----
-
-Probably the simplest TLS plugin. It can:
-
-- Protect and obfuscate your connections with real TLS1.3.
-- Easily run as a SIP003 plugin and run on Android platform.
-- Send random data packets at appropriate times. This can change the timing characteristics of data packets in one connection, which can protect you against timing traffic analysis. (optional, experimental) See [documentation (Chinese only)](https://github.com/IrineSistiana/simple-tls/wiki/%E6%97%B6%E5%BA%8F%E5%A1%AB%E5%85%85(pd)%E6%A8%A1%E5%BC%8F).
+[中文](README.md) [English](README_en.md)
 
 ---
 
 - [simple-tls](#simple-tls)
-  - [How to build](#how-to-build)
-  - [Usage](#usage)
-  - [Standalone mode](#standalone-mode)
-  - [SIP003 mode](#sip003-mode)
-  - [Start a server without certificate](#start-a-server-without-certificate)
-  - [How to import CA in client](#how-to-import-ca-in-client)
+  - [参数](#参数)
+  - [SIP003模式](#sip003模式)
   - [Android](#android)
 
-## How to build
+## 参数
 
-You will need go v1.14 or later.
+```text
+      客户端监听地址               服务端监听地址
+           |                            |
+|客户端|-->|simple-tls 客户端|--TLS1.3-->|simple-tls 服务端|-->|最终目的地|
+                                        |                     |   
+                                   客户端目的地地址     服务端目的地地址  
 
-    go build
+# 通用参数
+  -b string
+      [Host:Port] 监听地址。
+  -d string
+      [Host:Port] 目的地地址。
+  -auth string
+      身份验证密码。(可选。客户端和服务端需一致。仅用于过滤扫描流量。)
 
-## Usage
+# 客户端参数
+# e.g. simple-tls -b 127.0.0.1:1080 -d your_server_ip:1080 -n your.server.name
 
-        client bind addr               server bind addr
-               |                             |
-    |client|-->|simple-tls client|--TLS1.3-->|simple-tls server|-->|final destination|
-                                             |                     |   
-                                       client dst addr       server dst addr  
+  -mux int
+      单条 TCP 连接内最大复用的连接数。(默认 0 禁用 mux)
+  -n string
+      服务器证书名。
+  -no-verify
+      客户端将不会验证服务端的证书。
+  -ca string
+      加载 PEM CA 证书文件。
+      e.g. -ca ./path/to/my.ca.cert
+  -cca string
+      从字符串加载被 base64 编码 (e.g. base64 -w 0 ./my.cert) 的 PEM CA 证书。
+      e.g. -cca VkRJW...4eGdFbz0K==
 
-    # Common arguments
-    -b string
-        [Host:Port] bind addr.
-    -d string
-        [Host:Port] destination addr.
+# 服务端参数
+# e.g. simple-tls -b 0.0.0.0:1080 -d 127.0.0.1:12345 -s -key /path/to/your/key -cert /path/to/your/cert
+# -cert 和 -key 可以同时留空，会生成一个临时证书。证书的 Subject Alternate Name 取自 `-n` 参数。
+# e.g. simple-tls -b 0.0.0.0:1080 -d 127.0.0.1:12345 -s -n my.test.domain
 
-    # Transfer mode (Client and server must have the same mode)
-    -pd
-        Enable padding-data mode. Server will send some padding data to protect against traffic analysis.
+  -s    
+      以服务端运行。
+  -cert string
+      PEM 证书路径。
+  -key string
+      PEM 密钥路径。
 
-    # Client arguments
-    -n string
-        Server certificate name.
-    -no-verify
-        Client won't verify the server's certificate chain and host name.
-    -ca string
-        Load a CA file from path.
-    -cca string
-        Load a base64 encoded PEM CA certificate from string.
+# 其他参数
 
-    # Server arguments
-    -s    
-        Run as a server.
-    -cert string
-        PEM certificate file path.
-    -key string
-        PEM key file path.
+  -cpu int
+      最多使用的cpu数。
+  -fast-open
+      启用TCP快速开启，仅支持Linux内核4.11+。
+  -t int
+      空闲超时，以秒记 (默认300)。
 
-    # Other geek's arguments
-    -cpu int
-        The maximum number of CPUs to simultaneously use.
-    -fast-open
-        Enable TCP-Fast-Open. Only available on Linux kernel 4.11+.
-    -t int
-        Idle timeout in seconds (default to 300).
+# 命令
 
-    # Helper commands
-    -gen-cert
-        Quickly generate an ECC certificate.
-    -v
-        Print out version information of the current binary.
+  -gen-cert
+      快速生成一个 Subject Alternate Name 为 `-n` 的 ECC 证书
+      e.g. simple-tls -gen-cert -n my.test.domain
+  -v
+      显示目前程序版本
+```
 
-## Standalone mode
+## SIP003模式
 
-    # server
-    simple-tls -b 0.0.0.0:1080 -d 127.0.0.1:12345 -s -key /path/to/your/key -cert /path/to/your/cert
+支持 [SIP003](https://shadowsocks.org/en/wiki/Plugin.html) 插件协议。 以 [shadowsocks-libev](https://github.com/shadowsocks/shadowsocks-libev) 为例:
 
-    # client
-    simple-tls -b 127.0.0.1:1080 -d your_server_ip:1080 -n your.server.certificates.dnsname
-
-## SIP003 mode
-
-Complies with Shadowsocks [SIP003](https://shadowsocks.org/en/wiki/Plugin.html) plugin protocol. Shadowsocks will automatically set `-d` and `-b` parameters, no need to set those manually.
-
-Take [shadowsocks-libev](https://github.com/shadowsocks/shadowsocks-libev) as an example:
-
-    ss-server -c config.json --plugin simple-tls --plugin-opts "s;key=/path/to/your/key;cert=/path/to/your/cert"
-    ss-local -c config.json --plugin simple-tls --plugin-opts "n=your.server.certificates.dnsname"
-
-## Start a server without certificate
-
-You can use `-gen-cert` to quickly generate an [ECC certificate](https://www.digicert.com/faq/ecc.htm).
-
-    simple-tls -gen-cert -n certificate.dnsname -key ./my_ecc_cert.key -cert ./my_ecc_cert.cert
-
-Or you can just start the server without `-key` and `-cert`. Server will automatically generate a temporary certificate and store it in memory.
-
-**Please note that:** In those cases, clients have to import the generated certificate as CA. See below. Else clients need to disable server certificate verification by using `-no-verify`. Not recommended because this is susceptible to man-in-the-middle attacks.
-
-## How to import CA in client
-
-You can use `-cca` or `-ca` to import a certificate or ca-bundle file as CA.
-
-`-ca` accepts a path.
-
-    simple-tls ... ... -ca ./path/to/my.ca.cert
-
-`-cca` accepts a base64 encoded certificate.
-
-    simple-tls ... ... -cca VkRJWkpCK1R1c3h...4eGdFbz0K==
+```shell
+ss-server -c config.json --plugin simple-tls --plugin-opts "s;key=/path/to/your/key;cert=/path/to/your/cert"
+ss-local -c config.json --plugin simple-tls --plugin-opts "n=your.server.certificates.dnsname"
+```
 
 ## Android
 
-simple-tls-android is a GUI plugin for [shadowsocks-android](https://github.com/shadowsocks/shadowsocks-android). You need to download and install shadowsocks-android first. It's also an open source software. Source code is available [here](https://github.com/IrineSistiana/simple-tls-android).
+simple-tls-android 是 [shadowsocks-android](https://github.com/shadowsocks/shadowsocks-android) 的GUI插件，需要先下载 shadowsocks-android。simple-tls-android 同样是开源软件，源代码在 [这里](https://github.com/IrineSistiana/simple-tls-android) 。
 
-<details><summary><code>Screenshot</code></summary>
+<details><summary><code>屏幕截图</code></summary>
 
 <br>
 
-![screenshot](/assets/simple-tls-android-screenshot.jpg)
+![截屏](/assets/simple-tls-android-screenshot.jpg)
 
 </details>
 
