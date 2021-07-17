@@ -17,7 +17,21 @@
 
 package core
 
+import "net"
+
 type TcpConfig struct {
 	AndroidVPN bool
 	EnableTFO  bool
+}
+
+func reduceLoopbackSocketBuf(c net.Conn) {
+	tcpConn, ok := c.(*net.TCPConn)
+	if ok && isLoopbackConn(tcpConn) {
+		tcpConn.SetReadBuffer(32 * 1024)
+		tcpConn.SetWriteBuffer(32 * 1024)
+	}
+}
+
+func isLoopbackConn(c *net.TCPConn) bool {
+	return c.LocalAddr().(*net.TCPAddr).IP.IsLoopback() || c.RemoteAddr().(*net.TCPAddr).IP.IsLoopback()
 }

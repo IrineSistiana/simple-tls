@@ -121,6 +121,7 @@ func (m *muxPool) dialSessLocked() (call *dialCall) {
 		if err != nil {
 			call.err = err
 			close(call.done)
+			return
 		}
 
 		sess, err := smux.Client(c, muxConfig)

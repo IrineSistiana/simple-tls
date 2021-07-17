@@ -69,9 +69,8 @@ func GenerateCertificate(serverName string) (dnsName string, keyPEM, certPEM []b
 		SerialNumber: serialNumber,
 		Subject:      pkix.Name{CommonName: dnsName},
 		DNSNames:     []string{dnsName},
-
-		NotBefore: time.Now(),
-		NotAfter:  time.Now().AddDate(10, 0, 0),
+		NotBefore:    time.Now(),
+		NotAfter:     time.Now().AddDate(10, 0, 0),
 
 		KeyUsage:              x509.KeyUsageKeyEncipherment | x509.KeyUsageDigitalSignature,
 		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
@@ -82,6 +81,7 @@ func GenerateCertificate(serverName string) (dnsName string, keyPEM, certPEM []b
 	if err != nil {
 		return
 	}
+
 	b, err := x509.MarshalPKCS8PrivateKey(key)
 	if err != nil {
 		return

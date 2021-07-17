@@ -51,7 +51,7 @@ func main() {
 	}()
 
 	var bindAddr, dstAddr, auth, serverName, cca, ca, cert, key string
-	var insecureSkipVerify, isServer, tfo, vpn, genCert, showVersion bool
+	var noTLS, insecureSkipVerify, isServer, tfo, vpn, genCert, showVersion bool
 	var cpu, mux int
 	var timeout time.Duration
 	var timeoutFlag int
@@ -61,6 +61,7 @@ func main() {
 	commandLine.StringVar(&bindAddr, "b", "", "[Host:Port] bind address")
 	commandLine.StringVar(&dstAddr, "d", "", "[Host:Port] destination address")
 	commandLine.StringVar(&auth, "auth", "", "server password")
+	commandLine.BoolVar(&noTLS, "no-tls", false, "disable TLS (debug only)")
 
 	// client only
 	commandLine.IntVar(&mux, "mux", 0, "enable mux")
@@ -76,7 +77,7 @@ func main() {
 	commandLine.StringVar(&key, "key", "", "[Path] PEM key file")
 
 	// etc
-	commandLine.IntVar(&timeoutFlag, "t", 300, "timeout after sec")
+	commandLine.IntVar(&timeoutFlag, "t", 300, "timeout in sec")
 	commandLine.BoolVar(&tfo, "fast-open", false, "enable tfo, only available on linux 4.11+")
 	commandLine.IntVar(&cpu, "cpu", runtime.NumCPU(), "the maximum number of CPUs that can be executing simultaneously")
 
@@ -167,14 +168,16 @@ func main() {
 		setStrIfNotEmpty(&dstAddr, s)
 		s, _ = sip003Args.SS_PLUGIN_OPTIONS["auth"]
 		setStrIfNotEmpty(&auth, s)
-		s, _ = sip003Args.SS_PLUGIN_OPTIONS["mux"]
-		if err := setIntIfNotZero(&mux, s); err != nil {
-			log.Fatalf("main: invalid mux value, %v", err)
-		}
+		_, ok = sip003Args.SS_PLUGIN_OPTIONS["no-tls"]
+		noTLS = noTLS || ok
 
 		// client
 		s, _ = sip003Args.SS_PLUGIN_OPTIONS["n"]
 		setStrIfNotEmpty(&serverName, s)
+		s, _ = sip003Args.SS_PLUGIN_OPTIONS["mux"]
+		if err := setIntIfNotZero(&mux, s); err != nil {
+			log.Fatalf("main: invalid mux value, %v", err)
+		}
 		s, _ = sip003Args.SS_PLUGIN_OPTIONS["ca"]
 		setStrIfNotEmpty(&ca, s)
 		s, _ = sip003Args.SS_PLUGIN_OPTIONS["cca"]
@@ -225,29 +228,30 @@ func main() {
 
 	if isServer {
 		var certificates []tls.Certificate
+		if !noTLS {
+			switch {
+			case len(cert) == 0 && len(key) == 0: // no cert and key
+				log.Printf("main: warnning: neither -key nor -cert is specified")
 
-		switch {
-		case len(cert) == 0 && len(key) == 0: // no cert and key
-			log.Printf("main: warnning: neither -key nor -cert is specified")
-
-			dnsName, keyPEM, certPEM, err := core.GenerateCertificate(serverName)
-			if err != nil {
-				log.Fatalf("main: generateCertificate: %v", err)
+				dnsName, keyPEM, certPEM, err := core.GenerateCertificate(serverName)
+				if err != nil {
+					log.Fatalf("main: generateCertificate: %v", err)
+				}
+				log.Printf("main: warnning: using tmp certificate %s", dnsName)
+				cer, err := tls.X509KeyPair(certPEM, keyPEM)
+				if err != nil {
+					log.Fatalf("main: X509KeyPair: %v", err)
+				}
+				certificates = []tls.Certificate{cer}
+			case len(cert) != 0 && len(key) != 0: // has cert and key
+				cer, err := tls.LoadX509KeyPair(cert, key) //load cert
+				if err != nil {
+					log.Fatalf("main: LoadX509KeyPair: %v", err)
+				}
+				certificates = []tls.Certificate{cer}
+			default:
+				log.Fatal("main: server must have a X509 key pair, aka. -cert and -key")
 			}
-			log.Printf("main: warnning: using tmp certificate %s", dnsName)
-			cer, err := tls.X509KeyPair(certPEM, keyPEM)
-			if err != nil {
-				log.Fatalf("main: X509KeyPair: %v", err)
-			}
-			certificates = []tls.Certificate{cer}
-		case len(cert) != 0 && len(key) != 0: // has cert and key
-			cer, err := tls.LoadX509KeyPair(cert, key) //load cert
-			if err != nil {
-				log.Fatalf("main: LoadX509KeyPair: %v", err)
-			}
-			certificates = []tls.Certificate{cer}
-		default:
-			log.Fatal("main: server must have a X509 key pair, aka. -cert and -key")
 		}
 
 		lc := net.ListenConfig{Control: core.GetControlFunc(&core.TcpConfig{EnableTFO: tfo})}
@@ -258,8 +262,9 @@ func main() {
 
 		server := core.Server{
 			Listener:     l,
-			Auth:         auth,
 			Dst:          dstAddr,
+			NoTLS:        noTLS,
+			Auth:         auth,
 			Certificates: certificates,
 			Timeout:      timeout,
 		}
@@ -270,31 +275,33 @@ func main() {
 		}
 
 	} else { // do client
-		if len(serverName) == 0 {
-			serverName = strings.SplitN(dstAddr, ":", 2)[0]
-		}
 		var rootCAs *x509.CertPool
-
-		switch {
-		case len(cca) != 0:
-			cca = strings.TrimRight(cca, "=")
-			pem, err := base64.RawStdEncoding.DecodeString(cca)
-			if err != nil {
-				log.Fatalf("main: base64.RawStdEncoding.DecodeString: %v", err)
+		if !noTLS {
+			if len(serverName) == 0 {
+				serverName = strings.SplitN(dstAddr, ":", 2)[0]
 			}
 
-			rootCAs = x509.NewCertPool()
-			if ok := rootCAs.AppendCertsFromPEM(pem); !ok {
-				log.Fatal("main: AppendCertsFromPEM failed, cca is invalid")
-			}
-		case len(ca) != 0:
-			rootCAs = x509.NewCertPool()
-			certPEMBlock, err := ioutil.ReadFile(ca)
-			if err != nil {
-				log.Fatalf("main: ReadFile ca [%s], %v", ca, err)
-			}
-			if ok := rootCAs.AppendCertsFromPEM(certPEMBlock); !ok {
-				log.Fatal("main: AppendCertsFromPEM failed, ca is invalid")
+			switch {
+			case len(cca) != 0:
+				cca = strings.TrimRight(cca, "=")
+				pem, err := base64.RawStdEncoding.DecodeString(cca)
+				if err != nil {
+					log.Fatalf("main: base64.RawStdEncoding.DecodeString: %v", err)
+				}
+
+				rootCAs = x509.NewCertPool()
+				if ok := rootCAs.AppendCertsFromPEM(pem); !ok {
+					log.Fatal("main: AppendCertsFromPEM failed, cca is invalid")
+				}
+			case len(ca) != 0:
+				rootCAs = x509.NewCertPool()
+				certPEMBlock, err := ioutil.ReadFile(ca)
+				if err != nil {
+					log.Fatalf("main: ReadFile ca [%s], %v", ca, err)
+				}
+				if ok := rootCAs.AppendCertsFromPEM(certPEMBlock); !ok {
+					log.Fatal("main: AppendCertsFromPEM failed, ca is invalid")
+				}
 			}
 		}
 
@@ -307,6 +314,7 @@ func main() {
 		client := core.Client{
 			Listener:           l,
 			ServerAddr:         dstAddr,
+			NoTLS:              noTLS,
 			Auth:               auth,
 			ServerName:         serverName,
 			CertPool:           rootCAs,

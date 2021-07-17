@@ -31,6 +31,7 @@ import (
 type Client struct {
 	Listener           net.Listener
 	ServerAddr         string
+	NoTLS              bool
 	Auth               string
 	ServerName         string
 	CertPool           *x509.CertPool
@@ -52,11 +53,13 @@ func (c *Client) ActiveAndServe() error {
 		Control: GetControlFunc(&TcpConfig{AndroidVPN: c.AndroidVPNMode, EnableTFO: c.TFO}),
 	}
 
-	c.tlsConfig = new(tls.Config)
-	c.tlsConfig.NextProtos = []string{"http/1.1", "h2"}
-	c.tlsConfig.ServerName = c.ServerName
-	c.tlsConfig.RootCAs = c.CertPool
-	c.tlsConfig.InsecureSkipVerify = c.InsecureSkipVerify
+	if !c.NoTLS {
+		c.tlsConfig = new(tls.Config)
+		c.tlsConfig.NextProtos = []string{"http/1.1", "h2"}
+		c.tlsConfig.ServerName = c.ServerName
+		c.tlsConfig.RootCAs = c.CertPool
+		c.tlsConfig.InsecureSkipVerify = c.InsecureSkipVerify
+	}
 
 	if len(c.Auth) > 0 {
 		c.auth = md5.Sum([]byte(c.Auth))
@@ -71,6 +74,7 @@ func (c *Client) ActiveAndServe() error {
 		if err != nil {
 			return fmt.Errorf("l.Accept(): %w", err)
 		}
+		reduceLoopbackSocketBuf(localConn)
 
 		go func() {
 			defer localConn.Close()
@@ -100,22 +104,25 @@ func (c *Client) ActiveAndServe() error {
 	}
 }
 
-func (c *Client) dialServerConn() (serverConn net.Conn, err error) {
-	serverRawConn, err := c.dialer.Dial("tcp", c.ServerAddr)
+func (c *Client) dialServerConn() (net.Conn, error) {
+	serverConn, err := c.dialer.Dial("tcp", c.ServerAddr)
 	if err != nil {
 		return nil, err
 	}
 
-	serverTLSConn := tls.Client(serverRawConn, c.tlsConfig)
-	if err := tls13HandshakeWithTimeout(serverTLSConn, time.Second*5); err != nil {
-		serverRawConn.Close()
-		return nil, err
+	if !c.NoTLS {
+		serverTLSConn := tls.Client(serverConn, c.tlsConfig)
+		if err := tls13HandshakeWithTimeout(serverTLSConn, time.Second*5); err != nil {
+			serverTLSConn.Close()
+			return nil, err
+		}
+		serverConn = serverTLSConn
 	}
 
 	// write auth
 	if len(c.Auth) > 0 {
-		if _, err := serverTLSConn.Write(c.auth[:]); err != nil {
-			serverRawConn.Close()
+		if _, err := serverConn.Write(c.auth[:]); err != nil {
+			serverConn.Close()
 			return nil, fmt.Errorf("failed to write auth: %w", err)
 		}
 	}
@@ -125,10 +132,10 @@ func (c *Client) dialServerConn() (serverConn net.Conn, err error) {
 	if c.Mux > 0 {
 		mode = modeMux
 	}
-	if _, err := serverTLSConn.Write([]byte{mode}); err != nil {
-		serverRawConn.Close()
+	if _, err := serverConn.Write([]byte{mode}); err != nil {
+		serverConn.Close()
 		return nil, fmt.Errorf("failed to write mode: %w", err)
 	}
 
-	return serverTLSConn, nil
+	return serverConn, nil
 }

@@ -68,7 +68,7 @@ func Test_main(t *testing.T) {
 	}()
 
 	// test1
-	test := func(t *testing.T, mux int) {
+	test := func(t *testing.T, mux int, noTLS bool) {
 		// start server
 		_, keyPEM, certPEM, err := GenerateCertificate("example.com")
 		cert, err := tls.X509KeyPair(certPEM, keyPEM)
@@ -141,16 +141,18 @@ func Test_main(t *testing.T) {
 	}
 
 	tests := []struct {
-		name string
-		mux  int
+		name  string
+		mux   int
+		noTLS bool
 	}{
-		{"plain", 0},
-		{"mux", 5},
+		{"plain", 0, false},
+		{"mux", 5, false},
+		{"no tls", 5, true},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			test(t, tt.mux)
+			test(t, tt.mux, tt.noTLS)
 		})
 	}
 }
