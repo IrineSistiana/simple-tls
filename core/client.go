@@ -74,7 +74,7 @@ func (c *Client) ActiveAndServe() error {
 		if err != nil {
 			return fmt.Errorf("l.Accept(): %w", err)
 		}
-		reduceLoopbackSocketBuf(localConn)
+		reduceTCPLoopbackSocketBuf(localConn)
 
 		go func() {
 			defer localConn.Close()

@@ -24,11 +24,11 @@ type TcpConfig struct {
 	EnableTFO  bool
 }
 
-func reduceLoopbackSocketBuf(c net.Conn) {
+func reduceTCPLoopbackSocketBuf(c net.Conn) {
 	tcpConn, ok := c.(*net.TCPConn)
 	if ok && isLoopbackConn(tcpConn) {
-		tcpConn.SetReadBuffer(32 * 1024)
-		tcpConn.SetWriteBuffer(32 * 1024)
+		tcpConn.SetReadBuffer(128 * 1024)
+		tcpConn.SetWriteBuffer(128 * 1024)
 	}
 }
 

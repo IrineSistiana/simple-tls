@@ -131,7 +131,7 @@ func (s *Server) handleClientConn(cc net.Conn) (err error) {
 	if err != nil {
 		return fmt.Errorf("net.Dial: %v", err)
 	}
-	reduceLoopbackSocketBuf(dstConn)
+	reduceTCPLoopbackSocketBuf(dstConn)
 	defer dstConn.Close()
 
 	if err := ctunnel.OpenTunnel(dstConn, cc, s.Timeout); err != nil {
