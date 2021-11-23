@@ -17,7 +17,19 @@
 
 package core
 
-const (
-	modePlain byte = iota
-	modeMux
+import (
+	"log"
+	"net"
+	"net/http"
+	"os"
 )
+
+var errLogger = log.New(os.Stderr, "err", log.LstdFlags)
+
+func logConnErr(conn net.Conn, err error) {
+	errLogger.Printf("connection %s <-> %s: %v", conn.RemoteAddr(), conn.LocalAddr(), err)
+}
+
+func logRequestErr(r *http.Request, err error) {
+	errLogger.Printf("request from %s %s: %v", r.RemoteAddr, r.RequestURI, err)
+}

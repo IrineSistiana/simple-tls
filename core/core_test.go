@@ -19,21 +19,23 @@ package core
 
 import (
 	"bytes"
+	"crypto/sha256"
 	"crypto/tls"
-	"crypto/x509"
+	"encoding/hex"
+	"fmt"
 	"io"
-	"log"
 	"math/rand"
 	"net"
+	"sync"
 	"testing"
 	"time"
 )
 
 func Test_main(t *testing.T) {
 	dataSize := 512 * 1024
+	b := make([]byte, dataSize)
+	rand.Read(b)
 	randData := func() []byte {
-		b := make([]byte, dataSize)
-		rand.Read(b)
 		return b
 	}
 
@@ -68,26 +70,35 @@ func Test_main(t *testing.T) {
 	}()
 
 	// test1
-	test := func(t *testing.T, mux int, noTLS bool) {
-		// start server
-		_, keyPEM, certPEM, err := GenerateCertificate("example.com")
-		cert, err := tls.X509KeyPair(certPEM, keyPEM)
-		if err != nil {
-			t.Fatal(err)
-		}
-
+	test := func(t *testing.T, mux int, ws bool, wsPath string, auth string) {
 		serverListener, err := net.Listen("tcp", "127.0.0.1:0")
 		if err != nil {
 			t.Fatal(err)
 		}
 		defer serverListener.Close()
 
-		server := Server{
-			Listener:     serverListener,
-			Dst:          echoListener.Addr().String(),
-			Certificates: []tls.Certificate{cert},
-			Timeout:      timeout,
+		_, x509cert, keyPEM, certPEM, err := GenerateCertificate("")
+		if err != nil {
+			t.Fatal(err)
 		}
+		h := sha256.Sum256(x509cert.RawTBSCertificate)
+		certHash := hex.EncodeToString(h[:])
+
+		cert, err := tls.X509KeyPair(certPEM, keyPEM)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		server := Server{
+			DstAddr:       echoListener.Addr().String(),
+			Websocket:     ws,
+			WebsocketPath: wsPath,
+			Auth:          auth,
+			IdleTimeout:   timeout,
+			testListener:  serverListener,
+			testCert:      &cert,
+		}
+
 		go server.ActiveAndServe()
 
 		// start client
@@ -97,62 +108,61 @@ func Test_main(t *testing.T) {
 		}
 		defer clientListener.Close()
 
-		caPool := x509.NewCertPool()
-		ok := caPool.AppendCertsFromPEM(certPEM)
-		if !ok {
-			t.Fatal("appendCertsFromPEM failed")
+		client := Client{
+			DstAddr:            serverListener.Addr().String(),
+			Websocket:          ws,
+			WebsocketPath:      wsPath,
+			Mux:                mux,
+			Auth:               auth,
+			CertHash:           certHash,
+			InsecureSkipVerify: true,
+			IdleTimeout:        timeout,
+			testListener:       clientListener,
 		}
 
-		client := Client{
-			Listener:           clientListener,
-			ServerAddr:         serverListener.Addr().String(),
-			ServerName:         "example.com",
-			CertPool:           caPool,
-			InsecureSkipVerify: false,
-			Mux:                mux,
-			Timeout:            timeout,
-			AndroidVPNMode:     false,
-			TFO:                false,
-		}
 		go client.ActiveAndServe()
 
-		log.Printf("echo: %v, server: %v client: %v", echoListener.Addr(), serverListener.Addr(), clientListener.Addr())
-
+		wg := new(sync.WaitGroup)
 		for i := 0; i < 10; i++ {
-			conn, err := net.Dial("tcp", clientListener.Addr().String())
-			if err != nil {
-				t.Fatal(err)
-			}
-			data := randData()
-			buf := make([]byte, dataSize)
-			_, err = conn.Write(data)
-			if err != nil {
-				t.Fatal(err)
-			}
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				conn, err := net.Dial("tcp", clientListener.Addr().String())
+				if err != nil {
+					t.Error(err)
+					return
+				}
+				data := randData()
+				buf := make([]byte, dataSize)
+				_, err = conn.Write(data)
+				if err != nil {
+					t.Error(err)
+					return
+				}
 
-			_, err = io.ReadFull(conn, buf)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if bytes.Equal(data, buf) == false {
-				t.Fatal("corrupted data")
+				_, err = io.ReadFull(conn, buf)
+				if err != nil {
+					t.Error(err)
+					return
+				}
+				if bytes.Equal(data, buf) == false {
+					t.Error("corrupted data")
+					return
+				}
+			}()
+		}
+		wg.Wait()
+	}
+
+	for _, mux := range [...]int{0, 5} {
+		for _, ws := range [...]bool{false, true} {
+			for _, wsPath := range [...]string{"", "/123456"} {
+				for _, auth := range [...]string{"", "123456"} {
+					t.Run(fmt.Sprintf("mux_%v_ws_%v_wsPath_%v_auth_%v", mux, ws, wsPath, auth), func(t *testing.T) {
+						test(t, mux, ws, wsPath, auth)
+					})
+				}
 			}
 		}
-	}
-
-	tests := []struct {
-		name  string
-		mux   int
-		noTLS bool
-	}{
-		{"plain", 0, false},
-		{"mux", 5, false},
-		{"no tls", 5, true},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			test(t, tt.mux, tt.noTLS)
-		})
 	}
 }

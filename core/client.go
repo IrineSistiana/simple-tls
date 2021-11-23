@@ -18,124 +18,146 @@
 package core
 
 import (
-	"crypto/md5"
+	"bytes"
+	"context"
+	"crypto/sha256"
 	"crypto/tls"
 	"crypto/x509"
+	"encoding/hex"
+	"errors"
 	"fmt"
 	"github.com/IrineSistiana/ctunnel"
-	"log"
+	"io/ioutil"
 	"net"
+	"strings"
 	"time"
 )
 
 type Client struct {
-	Listener           net.Listener
-	ServerAddr         string
-	NoTLS              bool
-	Auth               string
-	ServerName         string
-	CertPool           *x509.CertPool
-	InsecureSkipVerify bool
-	Timeout            time.Duration
-	AndroidVPNMode     bool
-	TFO                bool
-	Mux                int
+	BindAddr      string
+	DstAddr       string
+	Websocket     bool
+	WebsocketPath string
+	Mux           int
+	Auth          string
 
-	dialer    net.Dialer
-	auth      [16]byte
-	tlsConfig *tls.Config
-	muxPool   *muxPool // not nil if Mux > 0
+	ServerName         string
+	CA                 string
+	CertHash           string
+	InsecureSkipVerify bool
+
+	IdleTimeout    time.Duration
+	AndroidVPNMode bool
+	TFO            bool
+
+	testListener net.Listener
 }
 
+var errEmptyCAFile = errors.New("no valid certificate was found in the ca file")
+
 func (c *Client) ActiveAndServe() error {
-	c.dialer = net.Dialer{
+
+	var l net.Listener
+	if c.testListener != nil {
+		l = c.testListener
+	} else {
+		var err error
+		lc := net.ListenConfig{}
+		l, err = lc.Listen(context.Background(), "tcp", c.BindAddr)
+		if err != nil {
+			return err
+		}
+	}
+
+	if len(c.ServerName) == 0 {
+		c.ServerName = strings.SplitN(c.DstAddr, ":", 2)[0]
+	}
+
+	var rootCAs *x509.CertPool
+	if len(c.CA) != 0 {
+		rootCAs = x509.NewCertPool()
+		certPEMBlock, err := ioutil.ReadFile(c.CA)
+		if err != nil {
+			return fmt.Errorf("cannot read ca file: %w", err)
+		}
+		if ok := rootCAs.AppendCertsFromPEM(certPEMBlock); !ok {
+			return errEmptyCAFile
+		}
+	}
+
+	dialer := &net.Dialer{
 		Timeout: time.Second * 5,
 		Control: GetControlFunc(&TcpConfig{AndroidVPN: c.AndroidVPNMode, EnableTFO: c.TFO}),
 	}
 
-	if !c.NoTLS {
-		c.tlsConfig = new(tls.Config)
-		c.tlsConfig.NextProtos = []string{"http/1.1", "h2"}
-		c.tlsConfig.ServerName = c.ServerName
-		c.tlsConfig.RootCAs = c.CertPool
-		c.tlsConfig.InsecureSkipVerify = c.InsecureSkipVerify
+	var chb []byte
+	if len(c.CertHash) != 0 {
+		b, err := hex.DecodeString(c.CertHash)
+		if err != nil {
+			return fmt.Errorf("invalid cert hash: %w", err)
+		}
+		chb = b
+	}
+
+	tlsConfig := &tls.Config{
+		NextProtos:         []string{"h2", "http/1.1"},
+		ServerName:         c.ServerName,
+		RootCAs:            rootCAs,
+		InsecureSkipVerify: c.InsecureSkipVerify,
+		VerifyConnection: func(state tls.ConnectionState) error {
+			if len(chb) != 0 {
+				cert := state.PeerCertificates[0]
+				h := sha256.Sum256(cert.RawTBSCertificate)
+				if bytes.Equal(h[:len(chb)], chb) {
+					return nil
+				}
+				return fmt.Errorf("cert hash mismatch, recieved cert hash is [%s]", hex.EncodeToString(h[:]))
+			}
+
+			if state.Version != tls.VersionTLS13 {
+				return fmt.Errorf("unsafe tls version %d", state.Version)
+			}
+			return nil
+		},
+	}
+
+	var transport Transport
+	if c.Websocket {
+		transport = NewWebsocketTransport(c.DstAddr, c.ServerName, c.WebsocketPath, tlsConfig, dialer)
+	} else {
+		transport = NewRawConnTransport(c.DstAddr, dialer)
+		transport = NewTLSTransport(transport, tlsConfig)
 	}
 
 	if len(c.Auth) > 0 {
-		c.auth = md5.Sum([]byte(c.Auth))
+		transport = NewAuthTransport(transport, c.Auth)
 	}
 
-	if c.Mux > 0 {
-		c.muxPool = newMuxPool(c.dialServerConn, c.Mux)
-	}
+	transport = NewMuxTransport(transport, c.Mux)
 
 	for {
-		localConn, err := c.Listener.Accept()
+		clientConn, err := l.Accept()
 		if err != nil {
-			return fmt.Errorf("l.Accept(): %w", err)
+			return err
 		}
-		reduceTCPLoopbackSocketBuf(localConn)
 
 		go func() {
-			defer localConn.Close()
+			defer clientConn.Close()
 
-			var serverConn net.Conn
-			if c.Mux > 0 {
-				stream, _, err := c.muxPool.GetStream()
-				if err != nil {
-					log.Printf("ERROR: muxPool.GetStream: %v", err)
-					return
-				}
-				serverConn = stream
-			} else {
-				conn, err := c.dialServerConn()
-				if err != nil {
-					log.Printf("ERROR: dialServerConn: %v", err)
-					return
-				}
-				serverConn = conn
+			ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
+			defer cancel()
+			serverConn, err := transport.Dial(ctx)
+			if err != nil {
+				errLogger.Printf("failed to dial server connection: %v", err)
+				return
 			}
 			defer serverConn.Close()
 
-			if err := ctunnel.OpenTunnel(localConn, serverConn, c.Timeout); err != nil {
-				log.Printf("ERROR: ActiveAndServe: openTunnel: %v", err)
+			err = ctunnel.OpenTunnel(clientConn, serverConn, c.IdleTimeout)
+			if err != nil {
+				logConnErr(clientConn, fmt.Errorf("tunnel closed: %w", err))
 			}
 		}()
 	}
-}
 
-func (c *Client) dialServerConn() (net.Conn, error) {
-	serverConn, err := c.dialer.Dial("tcp", c.ServerAddr)
-	if err != nil {
-		return nil, err
-	}
-
-	if !c.NoTLS {
-		serverTLSConn := tls.Client(serverConn, c.tlsConfig)
-		if err := tls13HandshakeWithTimeout(serverTLSConn, time.Second*5); err != nil {
-			serverTLSConn.Close()
-			return nil, err
-		}
-		serverConn = serverTLSConn
-	}
-
-	// write auth
-	if len(c.Auth) > 0 {
-		if _, err := serverConn.Write(c.auth[:]); err != nil {
-			serverConn.Close()
-			return nil, fmt.Errorf("failed to write auth: %w", err)
-		}
-	}
-
-	// write mode
-	mode := modePlain
-	if c.Mux > 0 {
-		mode = modeMux
-	}
-	if _, err := serverConn.Write([]byte{mode}); err != nil {
-		serverConn.Close()
-		return nil, fmt.Errorf("failed to write mode: %w", err)
-	}
-
-	return serverConn, nil
 }

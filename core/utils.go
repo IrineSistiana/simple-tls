@@ -21,29 +21,17 @@ import (
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
-	"crypto/tls"
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/pem"
 	"fmt"
 	"math/big"
 	mathRand "math/rand"
+	"net"
 	"time"
 )
 
-func tls13HandshakeWithTimeout(c *tls.Conn, timeout time.Duration) error {
-	c.SetDeadline(time.Now().Add(timeout))
-	if err := c.Handshake(); err != nil {
-		return err
-	}
-	c.SetDeadline(time.Time{})
-	if cVar := c.ConnectionState().Version; cVar != tls.VersionTLS13 {
-		return fmt.Errorf("unexpected tls version: %x", cVar)
-	}
-	return nil
-}
-
-func GenerateCertificate(serverName string) (dnsName string, keyPEM, certPEM []byte, err error) {
+func GenerateCertificate(serverName string) (dnsName string, cert *x509.Certificate, keyPEM, certPEM []byte, err error) {
 	//priv key
 	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	if err != nil {
@@ -89,7 +77,12 @@ func GenerateCertificate(serverName string) (dnsName string, keyPEM, certPEM []b
 	keyPEM = pem.EncodeToMemory(&pem.Block{Type: "EC PRIVATE KEY", Bytes: b})
 	certPEM = pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: certDER})
 
-	return dnsName, keyPEM, certPEM, nil
+	cert, err = x509.ParseCertificate(certDER)
+	if err != nil {
+		return
+	}
+
+	return
 }
 
 func randServerName() string {
@@ -105,4 +98,15 @@ func randStr(length int) string {
 		b[i] = set[r.Intn(len(set))]
 	}
 	return string(b)
+}
+
+func discardRead(c net.Conn, t time.Duration) {
+	c.SetDeadline(time.Now().Add(t))
+	buf := make([]byte, 512)
+	for {
+		_, err := c.Read(buf)
+		if err != nil {
+			return
+		}
+	}
 }

@@ -24,7 +24,7 @@ import (
 	"strings"
 )
 
-var ErrBrokenSIP003Args = errors.New("invalid SIP003 args")
+var errBrokenSIP003Args = errors.New("invalid SIP003 args")
 
 //SIP003Args contains sip003 args
 type SIP003Args struct {
@@ -55,7 +55,7 @@ func GetSIP003Args() (*SIP003Args, error) {
 
 	if srhOk || srpOk || slhOk || slpOk || spoOk { // has at least one arg
 		if !(srhOk && srpOk && slhOk && slpOk) { // but not has all 4 args
-			return nil, ErrBrokenSIP003Args
+			return nil, errBrokenSIP003Args
 		}
 	} else {
 		return nil, nil // can't find any sip003 arg

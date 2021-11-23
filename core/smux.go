@@ -18,11 +18,18 @@
 package core
 
 import (
+	"context"
 	"fmt"
 	"github.com/xtaci/smux"
+	"io"
 	"log"
 	"net"
 	"sync"
+)
+
+const (
+	modePlain byte = iota
+	modeMux
 )
 
 var muxConfig = &smux.Config{
@@ -33,8 +40,8 @@ var muxConfig = &smux.Config{
 	MaxStreamBuffer:   32 * 1024,
 }
 
-type muxPool struct {
-	dialFunc      func() (c net.Conn, err error)
+type MuxTransport struct {
+	nextTransport Transport
 	maxConcurrent int
 
 	sm   sync.Mutex
@@ -45,11 +52,8 @@ type muxPool struct {
 	dialWaiting int
 }
 
-func newMuxPool(dialFunc func() (c net.Conn, err error), maxConcurrent int) *muxPool {
-	if maxConcurrent < 1 {
-		panic(fmt.Sprintf("invalid maxConcurrent: %d", maxConcurrent))
-	}
-	return &muxPool{dialFunc: dialFunc, maxConcurrent: maxConcurrent, sess: map[*smux.Session]struct{}{}}
+func NewMuxTransport(subTransport Transport, maxConcurrent int) *MuxTransport {
+	return &MuxTransport{nextTransport: subTransport, maxConcurrent: maxConcurrent, sess: map[*smux.Session]struct{}{}}
 }
 
 type dialCall struct {
@@ -58,21 +62,32 @@ type dialCall struct {
 	err  error
 }
 
-func (m *muxPool) GetStream() (stream *smux.Stream, sess *smux.Session, err error) {
-	if stream, sess, ok := m.tryGetStream(); ok {
-		return stream, sess, nil
+func (m *MuxTransport) Dial(ctx context.Context) (net.Conn, error) {
+	if m.maxConcurrent <= 1 {
+		conn, err := m.nextTransport.Dial(ctx)
+		if err != nil {
+			return nil, err
+		}
+		if _, err := conn.Write([]byte{modePlain}); err != nil {
+			conn.Close()
+			return nil, fmt.Errorf("failed to write mux header: %w", err)
+		}
 	}
-	return m.tryGetStreamFlash()
+
+	if stream := m.tryGetStream(); stream != nil {
+		return stream, nil
+	}
+	return m.tryGetStreamFlash(ctx)
 }
 
-func (m *muxPool) MarkDead(sess *smux.Session) {
+func (m *MuxTransport) MarkDead(sess *smux.Session) {
 	m.sm.Lock()
 	defer m.sm.Unlock()
 	delete(m.sess, sess)
 	sess.Close()
 }
 
-func (m *muxPool) tryGetStream() (stream *smux.Stream, sess *smux.Session, ok bool) {
+func (m *MuxTransport) tryGetStream() (stream *smux.Stream) {
 	m.sm.Lock()
 	defer m.sm.Unlock()
 	for sess := range m.sess {
@@ -84,18 +99,18 @@ func (m *muxPool) tryGetStream() (stream *smux.Stream, sess *smux.Session, ok bo
 				delete(m.sess, sess)
 				continue
 			}
-			return s, sess, true
+			return s
 		}
 	}
-	return nil, nil, false
+	return nil
 }
 
-func (m *muxPool) tryGetStreamFlash() (stream *smux.Stream, sess *smux.Session, err error) {
+func (m *MuxTransport) tryGetStreamFlash(ctx context.Context) (*smux.Stream, error) {
 	var call *dialCall
 	m.dm.Lock()
 	if m.dialing == nil || (m.dialing != nil && m.dialWaiting >= m.maxConcurrent) {
 		m.dialWaiting = 0
-		m.dialing = m.dialSessLocked() // needs a new dial
+		m.dialing = m.dialSessLocked(ctx) // needs a new dial
 	} else {
 		m.dialWaiting++
 	}
@@ -103,23 +118,29 @@ func (m *muxPool) tryGetStreamFlash() (stream *smux.Stream, sess *smux.Session, 
 	defer m.dm.Unlock()
 
 	<-call.done
-	sess = call.s
-	err = call.err
+	sess := call.s
+	err := call.err
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
-	stream, err = sess.OpenStream()
-	return stream, sess, err
+	return sess.OpenStream()
 }
 
-func (m *muxPool) dialSessLocked() (call *dialCall) {
+func (m *MuxTransport) dialSessLocked(ctx context.Context) (call *dialCall) {
 	call = &dialCall{
 		done: make(chan struct{}),
 	}
 	go func() {
-		c, err := m.dialFunc()
+		c, err := m.nextTransport.Dial(ctx)
 		if err != nil {
 			call.err = err
+			close(call.done)
+			return
+		}
+
+		if _, err := c.Write([]byte{modeMux}); err != nil {
+			c.Close()
+			call.err = fmt.Errorf("failed to write mux header: %w", err)
 			close(call.done)
 			return
 		}
@@ -138,4 +159,46 @@ func (m *muxPool) dialSessLocked() (call *dialCall) {
 		m.dm.Unlock()
 	}()
 	return call
+}
+
+type MuxTransportHandler struct {
+	nextHandler TransportHandler
+}
+
+func NewMuxTransportHandler(nextHandler TransportHandler) *MuxTransportHandler {
+	return &MuxTransportHandler{nextHandler: nextHandler}
+}
+
+func (h *MuxTransportHandler) Handle(conn net.Conn) error {
+	header := make([]byte, 1)
+	if _, err := io.ReadFull(conn, header); err != nil {
+		return fmt.Errorf("failed to read mux header: %w", err)
+	}
+
+	switch header[0] {
+	case modePlain:
+		return h.nextHandler.Handle(conn)
+	case modeMux:
+		sess, err := smux.Server(conn, muxConfig)
+		if err != nil {
+			return err
+		}
+		defer sess.Close()
+
+		for {
+			stream, err := sess.AcceptStream()
+			if err != nil {
+				return nil // suppress smux err
+			}
+			go func() {
+				defer stream.Close()
+				if err := h.nextHandler.Handle(stream); err != nil {
+					logConnErr(stream, err)
+					return
+				}
+			}()
+		}
+	default:
+		return fmt.Errorf("invalid mux header %d", header[0])
+	}
 }
