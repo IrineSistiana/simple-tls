@@ -1,6 +1,6 @@
 # simple-tls
 
-一个简单易用的 shadowsocks SIP003 插件。可为原始数据流加一层 TLS。还支持 Websocket 和 mux (连接复用)。
+一个简单易用的 TCP 连接转发器。可为原始数据流加一层 TLS。还支持通过 Websocket 传输和 mux (连接复用)。支持 shadowsocks SIP003 插件协议。
 
 ---
 
@@ -31,19 +31,19 @@
   -mux int
       单条 TCP 连接内最大复用的连接数。(默认 0, 禁用 mux)
   -n string
-      服务器证书名。
+      服务器证书名。用于验证服务端的证书的合法性。也用作 SNI。
   -no-verify
       客户端将不会验证服务端的证书的合法性。(证书链验证)
   -ca string
-      加载 CA 证书文件。
-      e.g. -ca ./path/to/my.ca.cert
+      加载用于验证服务端的证书的 CA 证书文件。(默认使用系统证书池)
   -cert-hash string
       检查服务器证书的 hash。(文件验证)
+      -hash-cert 命令可以生成证书的 hash
 
 # 服务端参数
-# e.g. simple-tls -b 0.0.0.0:1080 -d 127.0.0.1:12345 -s -key /path/to/your/key -cert /path/to/your/cert
-# -cert 和 -key 可以同时留空，会生成一个临时证书。证书的 Subject Alternate Name 取自 `-n` 参数。
-# e.g. simple-tls -b 0.0.0.0:1080 -d 127.0.0.1:12345 -s -n my.test.domain
+# e.g. simple-tls -b :1080 -d 127.0.0.1:12345 -s -key /path/to/your/key -cert /path/to/your/cert
+# -cert 和 -key 可以同时留空，会在内存中生成一个临时证书。证书的域名默认随机，但也可以取自 `-n` 参数。
+# e.g. simple-tls -b :1080 -d 127.0.0.1:12345 -s -n my.test.domain
 
   -s    
       (必需) 以服务端运行。
@@ -52,20 +52,21 @@
   -key string
       密钥路径。
   -no-tls
-      禁用 TLS
+      禁用 TLS。
 
-# 其他参数
+# 其他通用参数
 
   -fast-open
       启用 tcp fast open，仅支持 Linux 4.11+ 内核。
   -t int
-      空闲超时，以秒记 (默认300)。
+      连接空闲超时，单位秒 (默认300)。
 
 # 命令
 
   -gen-cert
-      快速生成一个 Subject Alternate Name 为 `-n` 的 ECC 证书。
-      e.g. simple-tls -gen-cert -n my.test.domain
+      快速生成一个域名为 `-n` 的 ECC 证书到当前目录。
+      e.g. simple-tls -gen-cert -n my.domain
+      会生成证书 my.domain.cert 和密钥 my.domain.key 两个文件到当前目录。
   -hash-cert
       计算证书的 hash 值。(用于客户端的 -cert-hash)
       e.g. simple-tls -hash-cert ./my.cert
@@ -73,21 +74,55 @@
       显示目前程序版本
 ```
 
-## SIP003 模式
+## 服务端无合法证书(使用自签发证书)时如何使用
 
-支持 shadowsocks 的 [SIP003](https://shadowsocks.org/en/wiki/Plugin.html) 插件协议。 以 [shadowsocks-libev](https://github.com/shadowsocks/shadowsocks-libev) 为例:
+服务端使用临时证书，客户端不做任何验证。建议仅测试时使用该方案。
 
 ```shell
-ss-server -c config.json --plugin simple-tls --plugin-opts "s;key=/path/to/your/key;cert=/path/to/your/cert"
-ss-local -c config.json --plugin simple-tls --plugin-opts "n=your.server.certificates.dnsname"
+# 服务端的 -cert 和 -key 同时留空，会在内存生成一个临时证书。
+simple-tls -b :1080 -d 127.0.0.1:12345 -s -n my.cert.domain
+# 客户端禁用证书链验证。
+simple-tls -b :1080 -d your.server.address:1080 -n my.cert.domain -no-verify
 ```
 
-## Android
+服务端使用固定证书，客户端使用 hash 验证服务端证书。
+
+```shell
+# 服务端生成一个证书。然后计算证书的 hash。
+simple-tls -gen-cert -n my.cert.domain
+simple-tls -hash-cert ./my.cert.domain.cert
+# 使用这个证书启动服务端
+simple-tls -b :1080 -d 127.0.0.1:12345 -s -key ./my.cert.domain.key -cert ./my.cert.domain.cert
+# 客户端禁用证书链验证但启用证书文件验证。
+simple-tls -b :1080 -d your.server.address:1080 -n my.cert.domain -no-verify -cert-hash 96edc5...
+```
+
+服务端使用固定证书，客户端使用 CA 验证服务端证书。
+
+```shell
+# 服务端生成一个证书。
+simple-tls -gen-cert -n my.cert.domain
+# 使用这个证书启动服务端
+simple-tls -b :1080 -d 127.0.0.1:12345 -s -key ./my.cert.domain.key -cert ./my.cert.domain.cert
+# 客户端将生成的证书作为 CA 导入
+simple-tls -b :1080 -d your.server.address:1080 -n my.cert.domain -ca ./my.cert.domain.cert
+```
+
+## 作为 SIP003 插件使用
+
+支持 shadowsocks 的 [SIP003](https://shadowsocks.org/en/wiki/Plugin.html) 插件协议。shadowsocks 主程序会自动设定监听地址 `-b` 和目的地地址 `-d`。
+
+以 [shadowsocks-rust](https://github.com/shadowsocks/shadowsocks-rust) 为例:
+
+```shell
+ssserver -c config.json --plugin simple-tls --plugin-opts "s;key=/path/to/your/key;cert=/path/to/your/cert"
+sslocal -c config.json --plugin simple-tls --plugin-opts "n=your.server.certificates.dnsname"
+```
+
+### Android 插件
 
 simple-tls-android 是 [shadowsocks-android](https://github.com/shadowsocks/shadowsocks-android) 的带 GUI 的插件。
 
 目前随 simple-tls 一起发布。可从 release 界面下载。
 
 simple-tls-android 的源代码在 [这里](https://github.com/IrineSistiana/simple-tls-android) 。
-
----
