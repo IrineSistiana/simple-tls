@@ -25,6 +25,7 @@ import (
 	"log"
 	"net"
 	"sync"
+	"time"
 )
 
 const (
@@ -32,17 +33,21 @@ const (
 	modeMux
 )
 
-var muxConfig = &smux.Config{
-	Version:           1,
-	KeepAliveDisabled: true,
-	MaxFrameSize:      16 * 1024,
-	MaxReceiveBuffer:  64 * 1024,
-	MaxStreamBuffer:   32 * 1024,
+func getMuxConf(idleTimeout time.Duration) *smux.Config {
+	return &smux.Config{
+		Version:           1,
+		KeepAliveDisabled: true,
+		MaxFrameSize:      16 * 1024,
+		MaxReceiveBuffer:  64 * 1024,
+		MaxStreamBuffer:   32 * 1024,
+		IdleTimeout:       idleTimeout,
+	}
 }
 
 type MuxTransport struct {
 	nextTransport Transport
 	maxConcurrent int
+	muxConfig     *smux.Config
 
 	sm   sync.Mutex
 	sess map[*smux.Session]struct{}
@@ -52,8 +57,13 @@ type MuxTransport struct {
 	dialWaiting int
 }
 
-func NewMuxTransport(subTransport Transport, maxConcurrent int) *MuxTransport {
-	return &MuxTransport{nextTransport: subTransport, maxConcurrent: maxConcurrent, sess: map[*smux.Session]struct{}{}}
+func NewMuxTransport(subTransport Transport, maxConcurrent int, idleTimeout time.Duration) *MuxTransport {
+	return &MuxTransport{
+		nextTransport: subTransport,
+		maxConcurrent: maxConcurrent,
+		muxConfig:     getMuxConf(idleTimeout),
+		sess:          map[*smux.Session]struct{}{},
+	}
 }
 
 type dialCall struct {
@@ -145,7 +155,7 @@ func (m *MuxTransport) dialSessLocked(ctx context.Context) (call *dialCall) {
 			return
 		}
 
-		sess, err := smux.Client(c, muxConfig)
+		sess, err := smux.Client(c, m.muxConfig)
 		call.s = sess
 		call.err = err
 		close(call.done)
@@ -163,10 +173,11 @@ func (m *MuxTransport) dialSessLocked(ctx context.Context) (call *dialCall) {
 
 type MuxTransportHandler struct {
 	nextHandler TransportHandler
+	muxConfig   *smux.Config
 }
 
-func NewMuxTransportHandler(nextHandler TransportHandler) *MuxTransportHandler {
-	return &MuxTransportHandler{nextHandler: nextHandler}
+func NewMuxTransportHandler(nextHandler TransportHandler, idleTimeout time.Duration) *MuxTransportHandler {
+	return &MuxTransportHandler{nextHandler: nextHandler, muxConfig: getMuxConf(idleTimeout)}
 }
 
 func (h *MuxTransportHandler) Handle(conn net.Conn) error {
@@ -179,7 +190,7 @@ func (h *MuxTransportHandler) Handle(conn net.Conn) error {
 	case modePlain:
 		return h.nextHandler.Handle(conn)
 	case modeMux:
-		sess, err := smux.Server(conn, muxConfig)
+		sess, err := smux.Server(conn, h.muxConfig)
 		if err != nil {
 			return err
 		}

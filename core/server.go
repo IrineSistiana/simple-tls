@@ -61,7 +61,7 @@ func (s *Server) ActiveAndServe() error {
 
 	var transportHandler TransportHandler
 	transportHandler = NewBaseTransportHandler(s.DstAddr, s.IdleTimeout)
-	transportHandler = NewMuxTransportHandler(transportHandler)
+	transportHandler = NewMuxTransportHandler(transportHandler, s.IdleTimeout)
 	if len(s.Auth) > 0 {
 		transportHandler = NewAuthTransportHandler(transportHandler, s.Auth)
 	}

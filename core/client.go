@@ -133,7 +133,7 @@ func (c *Client) ActiveAndServe() error {
 		transport = NewAuthTransport(transport, c.Auth)
 	}
 
-	transport = NewMuxTransport(transport, c.Mux)
+	transport = NewMuxTransport(transport, c.Mux, c.IdleTimeout)
 
 	for {
 		clientConn, err := l.Accept()
