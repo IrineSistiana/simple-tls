@@ -73,7 +73,7 @@ func (s *Server) ActiveAndServe() error {
 		} else {
 			switch {
 			case len(s.Cert) == 0 && len(s.Key) == 0: // no cert and key
-				dnsName, _, keyPEM, certPEM, err := GenerateCertificate(s.ServerName)
+				dnsName, _, keyPEM, certPEM, err := GenerateCertificate(s.ServerName, nil)
 				if err != nil {
 					return fmt.Errorf("failed to generate temp cert: %w", err)
 				}

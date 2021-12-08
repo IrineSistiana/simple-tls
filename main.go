@@ -27,8 +27,10 @@ import (
 	"log"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"runtime"
 	"strconv"
+	"strings"
 	"syscall"
 	"time"
 
@@ -47,7 +49,7 @@ func main() {
 		os.Exit(0)
 	}()
 
-	var bindAddr, dstAddr, auth, serverName, wsPath, ca, cert, key, hashCert, certHash string
+	var bindAddr, dstAddr, auth, serverName, wsPath, ca, cert, key, hashCert, certHash, template string
 	var ws, insecureSkipVerify, isServer, noTLS, tfo, vpn, genCert, showVersion bool
 	var cpu, mux int
 	var timeout time.Duration
@@ -83,7 +85,8 @@ func main() {
 	commandLine.IntVar(&cpu, "cpu", runtime.NumCPU(), "the maximum number of CPUs that can be executing simultaneously")
 
 	// helper commands
-	commandLine.BoolVar(&genCert, "gen-cert", false, "[This is a helper function]: generate a certificate with dns name [-n], store it's key to [-key] and cert to [-cert], print cert in base64 format without padding characters")
+	commandLine.BoolVar(&genCert, "gen-cert", false, "generate a certificate with dns name [-n](optional or random) by using template [-template](optional), store it's key to [-key](optional or dns name) and cert to [-cert](optional or dns name)")
+	commandLine.StringVar(&template, "template", "", "template certificate")
 	commandLine.BoolVar(&showVersion, "v", false, "output version info and exit")
 	commandLine.StringVar(&hashCert, "hash-cert", "", "print the hashes for the certificate")
 
@@ -102,14 +105,28 @@ func main() {
 	if genCert {
 		log.Print("generating PEM encoded key and cert")
 
-		dnsName, certOut, keyPEM, certPEM, err := core.GenerateCertificate(serverName)
+		var templateCert *x509.Certificate
+		if len(template) > 0 {
+			templateCert, err = core.LoadCert(template)
+			if err != nil {
+				log.Fatalf("cannot load template certificate: %v", err)
+			}
+		}
+		dnsName, certOut, keyPEM, certPEM, err := core.GenerateCertificate(serverName, templateCert)
 		if err != nil {
 			log.Fatalf("generateCertificate: %v", err)
 		}
 
+		var defaultOutFileName string
+		if len(template) > 0 {
+			defaultOutFileName = "gen_" + strings.TrimSuffix(filepath.Base(template), filepath.Ext(template))
+		} else {
+			defaultOutFileName = strings.TrimPrefix(dnsName, "*.")
+		}
+
 		// key
 		if len(key) == 0 {
-			key = dnsName + ".key"
+			key = defaultOutFileName + ".key"
 		}
 		log.Printf("generating PEM encoded key to %s", key)
 		keyFile, err := os.Create(key)
@@ -125,7 +142,7 @@ func main() {
 
 		// cert
 		if len(cert) == 0 {
-			cert = dnsName + ".cert"
+			cert = defaultOutFileName + ".cert"
 		}
 		log.Printf("generating PEM encoded cert to %s", cert)
 		certFile, err := os.Create(cert)
@@ -138,7 +155,6 @@ func main() {
 			log.Fatalf("writing cert file [%s]: %v", cert, err)
 		}
 
-		fmt.Printf("Your new cert dns name is: %s\n", dnsName)
 		fmt.Print("Your new cert hash is:\n")
 		fmt.Printf("%x\n", sha256.Sum256(certOut.RawTBSCertificate))
 		return

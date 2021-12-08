@@ -24,25 +24,19 @@ import (
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/pem"
+	"errors"
 	"fmt"
 	"math/big"
 	mathRand "math/rand"
 	"net"
+	"os"
 	"time"
 )
 
-func GenerateCertificate(serverName string) (dnsName string, cert *x509.Certificate, keyPEM, certPEM []byte, err error) {
+func GenerateCertificate(serverName string, template *x509.Certificate) (dnsName string, cert *x509.Certificate, keyPEM, certPEM []byte, err error) {
 	//priv key
 	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	if err != nil {
-		return
-	}
-
-	//serial number
-	serialNumberLimit := new(big.Int).Lsh(big.NewInt(1), 128)
-	serialNumber, err := rand.Int(rand.Reader, serialNumberLimit)
-	if err != nil {
-		err = fmt.Errorf("generate serial number: %v", err)
 		return
 	}
 
@@ -53,22 +47,42 @@ func GenerateCertificate(serverName string) (dnsName string, cert *x509.Certific
 		dnsName = serverName
 	}
 
-	template := x509.Certificate{
-		SerialNumber: serialNumber,
-		Subject:      pkix.Name{CommonName: dnsName},
-		DNSNames:     []string{dnsName},
-		NotBefore:    time.Now(),
-		NotAfter:     time.Now().AddDate(10, 0, 0),
+	if template == nil {
+		//serial number
+		serialNumberLimit := new(big.Int).Lsh(big.NewInt(1), 128)
+		var serialNumber *big.Int
+		serialNumber, err = rand.Int(rand.Reader, serialNumberLimit)
+		if err != nil {
+			err = fmt.Errorf("generate serial number: %v", err)
+			return
+		}
 
-		KeyUsage:              x509.KeyUsageKeyEncipherment | x509.KeyUsageDigitalSignature,
-		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
-		BasicConstraintsValid: true,
+		template = &x509.Certificate{
+			SerialNumber: serialNumber,
+			Subject:      pkix.Name{CommonName: dnsName},
+			DNSNames:     []string{dnsName},
+			NotBefore:    time.Now(),
+
+			KeyUsage:              x509.KeyUsageKeyEncipherment | x509.KeyUsageDigitalSignature,
+			ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
+			BasicConstraintsValid: true,
+		}
+	} else {
+		if len(template.DNSNames) > 0 {
+			dnsName = template.DNSNames[0]
+		}
 	}
+	template.NotAfter = time.Now().AddDate(10, 0, 0)
+	template.SignatureAlgorithm = x509.UnknownSignatureAlgorithm
+	template.PublicKey = nil
 
-	certDER, err := x509.CreateCertificate(rand.Reader, &template, &template, &key.PublicKey, key)
+	certDER, err := x509.CreateCertificate(rand.Reader, template, template, &key.PublicKey, key)
 	if err != nil {
 		return
 	}
+	template.NotAfter = time.Now().AddDate(10, 0, 0)
+	template.SignatureAlgorithm = x509.UnknownSignatureAlgorithm
+	template.PublicKey = nil
 
 	b, err := x509.MarshalPKCS8PrivateKey(key)
 	if err != nil {
@@ -109,4 +123,19 @@ func discardRead(c net.Conn, t time.Duration) {
 			return
 		}
 	}
+}
+
+func LoadCert(file string) (*x509.Certificate, error) {
+	b, err := os.ReadFile(file)
+	if err != nil {
+		return nil, err
+	}
+	block, _ := pem.Decode(b)
+	if block == nil {
+		return nil, errors.New("empty data")
+	}
+	if block.Type != "CERTIFICATE" {
+		return nil, fmt.Errorf("invalid pem block type [%s]", block.Type)
+	}
+	return x509.ParseCertificate(block.Bytes)
 }
