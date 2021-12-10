@@ -49,7 +49,7 @@ type MuxTransport struct {
 	maxConcurrent int
 	muxConfig     *smux.Config
 
-	sm   sync.Mutex
+	sm   sync.RWMutex
 	sess map[*smux.Session]struct{}
 
 	dm          sync.Mutex
@@ -73,7 +73,7 @@ type dialCall struct {
 }
 
 func (m *MuxTransport) Dial(ctx context.Context) (net.Conn, error) {
-	if m.maxConcurrent <= 1 {
+	if m.maxConcurrent == 0 {
 		conn, err := m.nextTransport.Dial(ctx)
 		if err != nil {
 			return nil, err
@@ -82,6 +82,7 @@ func (m *MuxTransport) Dial(ctx context.Context) (net.Conn, error) {
 			conn.Close()
 			return nil, fmt.Errorf("failed to write mux header: %w", err)
 		}
+		return conn, err
 	}
 
 	if stream := m.tryGetStream(); stream != nil {
@@ -98,21 +99,31 @@ func (m *MuxTransport) MarkDead(sess *smux.Session) {
 }
 
 func (m *MuxTransport) tryGetStream() (stream *smux.Stream) {
-	m.sm.Lock()
-	defer m.sm.Unlock()
-	for sess := range m.sess {
-		if sess.NumStreams() < m.maxConcurrent {
-			s, err := sess.OpenStream()
-			if err != nil {
-				log.Printf("sess err: %v", err)
-				sess.Close()
-				delete(m.sess, sess)
-				continue
+	for {
+		m.sm.RLock()
+		var sess *smux.Session
+		for sess = range m.sess {
+			if sess.NumStreams() < m.maxConcurrent {
+				break
 			}
-			return s
 		}
+		m.sm.RUnlock()
+
+		if sess == nil {
+			return nil
+		}
+
+		s, err := sess.OpenStream()
+		if err != nil {
+			log.Printf("sess err: %v", err)
+			sess.Close()
+			m.sm.Lock()
+			delete(m.sess, sess)
+			m.sm.Unlock()
+			continue
+		}
+		return s
 	}
-	return nil
 }
 
 func (m *MuxTransport) tryGetStreamFlash(ctx context.Context) (*smux.Stream, error) {
