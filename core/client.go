@@ -104,6 +104,7 @@ func (c *Client) ActiveAndServe() error {
 		ServerName:         c.ServerName,
 		RootCAs:            rootCAs,
 		InsecureSkipVerify: c.InsecureSkipVerify,
+		ClientSessionCache: tls.NewLRUClientSessionCache(64),
 		VerifyConnection: func(state tls.ConnectionState) error {
 			if len(chb) != 0 {
 				cert := state.PeerCertificates[0]
