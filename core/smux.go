@@ -22,7 +22,6 @@ import (
 	"fmt"
 	"github.com/xtaci/smux"
 	"io"
-	"log"
 	"net"
 	"sync"
 	"time"
@@ -115,7 +114,7 @@ func (m *MuxTransport) tryGetStream() (stream *smux.Stream) {
 
 		s, err := sess.OpenStream()
 		if err != nil {
-			log.Printf("sess err: %v", err)
+			logMuxSessErr(sess, err)
 			sess.Close()
 			m.sm.Lock()
 			delete(m.sess, sess)
