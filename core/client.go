@@ -46,9 +46,8 @@ type Client struct {
 	CertHash           string
 	InsecureSkipVerify bool
 
-	IdleTimeout    time.Duration
-	AndroidVPNMode bool
-	TFO            bool
+	IdleTimeout time.Duration
+	SocketOpts  *TcpConfig
 
 	testListener net.Listener
 }
@@ -87,7 +86,7 @@ func (c *Client) ActiveAndServe() error {
 
 	dialer := &net.Dialer{
 		Timeout: time.Second * 5,
-		Control: GetControlFunc(&TcpConfig{AndroidVPN: c.AndroidVPNMode, EnableTFO: c.TFO}),
+		Control: GetControlFunc(c.SocketOpts),
 	}
 
 	var chb []byte
@@ -104,7 +103,6 @@ func (c *Client) ActiveAndServe() error {
 		ServerName:         c.ServerName,
 		RootCAs:            rootCAs,
 		InsecureSkipVerify: c.InsecureSkipVerify,
-		ClientSessionCache: tls.NewLRUClientSessionCache(64),
 		VerifyConnection: func(state tls.ConnectionState) error {
 			if len(chb) != 0 {
 				cert := state.PeerCertificates[0]

@@ -51,7 +51,7 @@ func main() {
 
 	var bindAddr, dstAddr, auth, serverName, wsPath, ca, cert, key, hashCert, certHash, template string
 	var ws, insecureSkipVerify, isServer, noTLS, tfo, vpn, genCert, showVersion bool
-	var cpu, mux int
+	var cpu, mux, ttl int
 	var timeout time.Duration
 	var timeoutFlag int
 
@@ -82,6 +82,7 @@ func main() {
 	// etc
 	commandLine.IntVar(&timeoutFlag, "t", 300, "timeout in sec")
 	commandLine.BoolVar(&tfo, "fast-open", false, "enable tfo, only available on linux 4.11+")
+	commandLine.IntVar(&ttl, "ttl", 0, "set the time-to-live field that is sed in every packet.")
 	commandLine.IntVar(&cpu, "cpu", runtime.NumCPU(), "the maximum number of CPUs that can be executing simultaneously")
 
 	// helper commands
@@ -247,6 +248,10 @@ func main() {
 		}
 		_, ok = sip003Args.SS_PLUGIN_OPTIONS["fast-open"]
 		tfo = tfo || ok
+		s, _ = sip003Args.SS_PLUGIN_OPTIONS["ttl"]
+		if err := setIntIfNotZero(&ttl, s); err != nil {
+			log.Fatalf("invalid ttl number, %v", err)
+		}
 
 		if isServer {
 			dstAddr = sip003Args.GetLocalAddr()
@@ -301,8 +306,11 @@ func main() {
 			CertHash:           certHash,
 			InsecureSkipVerify: insecureSkipVerify,
 			IdleTimeout:        timeout,
-			AndroidVPNMode:     vpn,
-			TFO:                tfo,
+			SocketOpts: &core.TcpConfig{
+				AndroidVPN: vpn,
+				EnableTFO:  tfo,
+				TTL:        ttl,
+			},
 		}
 
 		err = client.ActiveAndServe()

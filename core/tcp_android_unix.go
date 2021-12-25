@@ -1,3 +1,4 @@
+//go:build linux || android
 // +build linux android
 
 //     Copyright (C) 2020-2021, IrineSistiana
@@ -35,6 +36,13 @@ func (c *TcpConfig) setSockOpt(uintFd uintptr) {
 		err := unix.SetsockoptInt(fd, unix.IPPROTO_TCP, unix.TCP_FASTOPEN_CONNECT, 1)
 		if err != nil {
 			log.Printf("setsockopt: TCP_FASTOPEN_CONNECT, %v", err)
+		}
+	}
+
+	if c.TTL > 0 && c.TTL < 255 {
+		err := unix.SetsockoptInt(fd, unix.IPPROTO_IP, unix.IP_TTL, c.TTL)
+		if err != nil {
+			log.Printf("setsockopt: IP_TTL, %v", err)
 		}
 	}
 	return

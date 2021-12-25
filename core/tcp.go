@@ -22,6 +22,7 @@ import "net"
 type TcpConfig struct {
 	AndroidVPN bool
 	EnableTFO  bool
+	TTL        int
 }
 
 func reduceTCPLoopbackSocketBuf(c net.Conn) {
