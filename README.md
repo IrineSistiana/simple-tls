@@ -1,6 +1,6 @@
 # simple-tls
 
-一个简单易用的 TCP 连接转发器。可为原始数据流加一层 TLS。还支持通过 Websocket 传输和 mux (连接复用)。支持 shadowsocks SIP003 插件协议。
+一个简单易用的 TCP 连接转发器。可为原始数据流加一层 TLS。支持通过 Websocket 传输和 mux (连接复用)。支持 shadowsocks SIP003 插件协议和 Android。
 
 ---
 
@@ -78,7 +78,7 @@
       显示目前程序版本
 ```
 
-## 服务端无合法证书时如何快速上手 
+## 服务端无合法证书时如何快速使用 
 
 服务端使用临时证书，客户端不做任何验证。下层连接有安全措施时可以使用该方案。
 
@@ -113,10 +113,8 @@ ssserver -c config.json --plugin simple-tls --plugin-opts "s;key=/path/to/your/k
 sslocal -c config.json --plugin simple-tls --plugin-opts "n=your.server.certificates.dnsname"
 ```
 
-### Android 插件
+### Android SIP003 插件
 
 simple-tls-android 是 [shadowsocks-android](https://github.com/shadowsocks/shadowsocks-android) 的带 GUI 的插件。目前随 simple-tls 一起发布。可从 release 界面下载全平台通用的 apk。
-
-在 shadowsocks-android 的配置界面选择 simple-tls-android 时会弹出警告 `不是来自可信源`。是因为目前只有 shadowsocks-android 的原作者是 `可信源`，所有第三方插件都会弹出这个警告，无视就好。
 
 simple-tls-android 的源代码在 [这里](https://github.com/IrineSistiana/simple-tls-android) 。
