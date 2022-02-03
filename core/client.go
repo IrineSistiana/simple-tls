@@ -99,7 +99,6 @@ func (c *Client) ActiveAndServe() error {
 	}
 
 	tlsConfig := &tls.Config{
-		NextProtos:         []string{"h2", "http/1.1"},
 		ServerName:         c.ServerName,
 		RootCAs:            rootCAs,
 		InsecureSkipVerify: c.InsecureSkipVerify,
@@ -122,8 +121,10 @@ func (c *Client) ActiveAndServe() error {
 
 	var transport Transport
 	if c.Websocket {
+		tlsConfig.NextProtos = []string{"http/1.1"}
 		transport = NewWebsocketTransport(c.DstAddr, c.ServerName, c.WebsocketPath, tlsConfig, dialer)
 	} else {
+		tlsConfig.NextProtos = []string{"h2", "http/1.1"}
 		transport = NewRawConnTransport(c.DstAddr, dialer)
 		transport = NewTLSTransport(transport, tlsConfig)
 	}

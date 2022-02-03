@@ -66,7 +66,7 @@ func (h *AuthTransportHandler) Handle(conn net.Conn) error {
 	}
 
 	if auth != h.auth {
-		discardRead(conn, time.Second*15)
+		discardRead(conn, time.Second*5)
 		return errAuthFailed
 	}
 

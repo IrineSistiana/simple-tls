@@ -76,7 +76,12 @@ func GenerateCertificate(serverName string, template *x509.Certificate) (dnsName
 	template.SignatureAlgorithm = x509.UnknownSignatureAlgorithm
 	template.PublicKey = nil
 
-	certDER, err := x509.CreateCertificate(rand.Reader, template, template, &key.PublicKey, key)
+	parent := &x509.Certificate{
+		SerialNumber: new(big.Int),
+		Subject:      template.Issuer,
+	}
+
+	certDER, err := x509.CreateCertificate(rand.Reader, template, parent, &key.PublicKey, key)
 	if err != nil {
 		return
 	}

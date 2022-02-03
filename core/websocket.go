@@ -22,7 +22,6 @@ import (
 	"crypto/tls"
 	"errors"
 	"fmt"
-	"golang.org/x/net/http2"
 	"net"
 	"net/http"
 	"net/url"
@@ -31,8 +30,8 @@ import (
 )
 
 type WebsocketTransport struct {
-	u  string
-	op *websocket.DialOptions
+	u          string
+	httpClient *http.Client
 }
 
 func NewWebsocketTransport(serverAddr, serverName, urlPath string, tlsConfig *tls.Config, dialer *net.Dialer) *WebsocketTransport {
@@ -49,30 +48,22 @@ func NewWebsocketTransport(serverAddr, serverName, urlPath string, tlsConfig *tl
 		TLSHandshakeTimeout:   time.Second * 5,
 		DisableCompression:    true,
 		ResponseHeaderTimeout: time.Second * 5,
-		ExpectContinueTimeout: 0,
-		WriteBufferSize:       32 * 1024,
-		ReadBufferSize:        32 * 1024,
-		ForceAttemptHTTP2:     true,
+		WriteBufferSize:       24 * 1024,
+		ReadBufferSize:        24 * 1024,
+		ForceAttemptHTTP2:     false,
 	}
-
-	t2, _ := http2.ConfigureTransports(t)
-	t2.ReadIdleTimeout = time.Second * 30
-	t2.PingTimeout = time.Second * 10
 
 	return &WebsocketTransport{
 		u: u.String(),
-		op: &websocket.DialOptions{
-			HTTPClient: &http.Client{
-				Transport: t,
-				Timeout:   time.Second * 10,
-			},
-			CompressionMode: websocket.CompressionDisabled,
+		httpClient: &http.Client{
+			Transport: t,
+			Timeout:   time.Second * 10,
 		},
 	}
 }
 
 func (p *WebsocketTransport) Dial(ctx context.Context) (net.Conn, error) {
-	wsConn, _, err := websocket.Dial(ctx, p.u, p.op)
+	wsConn, _, err := websocket.Dial(ctx, p.u, &websocket.DialOptions{HTTPClient: p.httpClient, CompressionMode: websocket.CompressionDisabled})
 	if err != nil {
 		return nil, err
 	}
@@ -121,10 +112,6 @@ func ListenWebsocket(l net.Listener, path string, nextHandler TransportHandler) 
 		ReadHeaderTimeout: time.Second * 10,
 		WriteTimeout:      time.Second * 10,
 	}
-
-	http2.ConfigureServer(httpServer, &http2.Server{
-		IdleTimeout: time.Second * 45,
-	})
 
 	return httpServer.Serve(l)
 }

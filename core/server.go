@@ -97,7 +97,6 @@ func (s *Server) ActiveAndServe() error {
 		}
 
 		tlsConfig := &tls.Config{
-			NextProtos:   []string{"h2", "http/1.1"},
 			Certificates: []tls.Certificate{certificate},
 			VerifyConnection: func(state tls.ConnectionState) error {
 				if state.Version != tls.VersionTLS13 {

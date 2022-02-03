@@ -179,7 +179,7 @@ func Test_main(t *testing.T) {
 		atomic.StoreUint32(&testFinished, 1)
 	}
 
-	for _, mux := range [...]int{0, 5} {
+	for _, mux := range [...]int{0, 1, 5} {
 		for _, ws := range [...]bool{false, true} {
 			for _, wsPath := range [...]string{"", "/123456"} {
 				for _, auth := range [...]string{"", "123456"} {
