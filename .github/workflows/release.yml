@@ -1,7 +1,6 @@
 name: Release simple-tls
 
 on:
-  workflow_dispatch:
   push:
     tags:
       - '*'
@@ -11,15 +10,16 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v2
+        uses: actions/checkout@v3
         with:
           fetch-depth: 0
       - name: Set up Go
-        uses: actions/setup-go@v2
+        uses: actions/setup-go@v3
         with:
           go-version: '1.19'
+          cache: true
       - name: Run GoReleaser
-        uses: goreleaser/goreleaser-action@v2
+        uses: goreleaser/goreleaser-action@v3
         with:
           version: latest
           args: release --rm-dist
@@ -31,31 +31,28 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v2
+        uses: actions/checkout@v3
 
-      - name: Set env
-        run: |
-          echo "TAG=$(cat tag)" >> $GITHUB_ENV
       - name: Set up QEMU
-        uses: docker/setup-qemu-action@v1
+        uses: docker/setup-qemu-action@v2
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v1
+        uses: docker/setup-buildx-action@v2
 
       - name: Login to DockerHub
-        uses: docker/login-action@v1
+        uses: docker/login-action@v2
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
       - name: Build and push
-        uses: docker/build-push-action@v2
+        uses: docker/build-push-action@v3
         with:
           build-args: |
-            TAG=${{ env.TAG }}
+            TAG=${{github.ref_name}}
             REPOSITORY=IrineSistiana/simple-tls
           platforms: linux/amd64,linux/arm/v7,linux/arm64
           push: true
           tags: |
             ${{ secrets.DOCKERHUB_USERNAME }}/simple-tls:latest
-            ${{ secrets.DOCKERHUB_USERNAME }}/simple-tls:${{ env.TAG }}
+            ${{ secrets.DOCKERHUB_USERNAME }}/simple-tls:${{github.ref_name}}
