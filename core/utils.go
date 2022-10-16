@@ -28,7 +28,6 @@ import (
 	"fmt"
 	"math/big"
 	mathRand "math/rand"
-	"net"
 	"os"
 	"time"
 )
@@ -117,17 +116,6 @@ func randStr(length int) string {
 		b[i] = set[r.Intn(len(set))]
 	}
 	return string(b)
-}
-
-func discardRead(c net.Conn, t time.Duration) {
-	c.SetDeadline(time.Now().Add(t))
-	buf := make([]byte, 512)
-	for {
-		_, err := c.Read(buf)
-		if err != nil {
-			return
-		}
-	}
 }
 
 func LoadCert(file string) (*x509.Certificate, error) {

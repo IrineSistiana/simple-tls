@@ -1,0 +1,11 @@
+syntax = "proto3";
+package grpc_tunnel;
+option go_package = "./core/grpc_tunnel";
+
+message Bytes {
+ bytes b = 1;
+}
+
+service GRPCTunnel{
+  rpc Connect(stream Bytes) returns (stream Bytes) {};
+}

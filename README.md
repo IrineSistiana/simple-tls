@@ -1,6 +1,6 @@
 # simple-tls
 
-一个简单易用的 TCP 连接转发器。可为原始数据流加一层 TLS。支持通过 Websocket 传输和 mux (连接复用)。支持 shadowsocks SIP003 插件协议和 Android。
+简单易用的 TCP 连接转发器。可为原始数据流加一层 TLS。支持通过 gRPC 传输。
 
 ---
 
@@ -18,27 +18,23 @@
       [Host:Port] (必需) 监听地址。
   -d string
       [Host:Port] (必需) 目的地地址。
-  -auth string
-      身份验证密码。客户端和服务端需一致。用于过滤扫描流量。
-  -ws
-      使用 Websocket 协议。客户端和服务端需一致。
-  -ws-path string
-      Websocket 的 URL path。客户端和服务端需一致。
+  -grpc
+      使用 gRPC 协议。客户端和服务端需一致。
+  -grpc-auth string
+      gRPC 验证头。客户端和服务端需一致。可用于过滤扫描流量。
 
 # 客户端参数
 # e.g. simple-tls -b 127.0.0.1:1080 -d your_server_ip:1080 -n your.server.name
 
   -n string
       服务器证书名。用于验证服务端的证书的合法性。也用作 SNI。
-  -mux int
-      单条 TCP 连接内最大复用的连接数。(默认 0, 禁用 mux)
   -no-verify
       客户端将不会验证服务端的证书的合法性。(证书链验证)
   -ca string
       用于验证服务端的证书的 CA 证书文件。(默认使用系统证书池)
   -cert-hash string
-      检查服务器证书的 hash。(文件验证)
-      -hash-cert 命令可以生成证书的 hash
+      检查服务器证书的 hash。(服务端证书锁定)
+      tips: 使用 -hash-cert 命令可以生成证书的 hash
 
 # 服务端参数
 # e.g. simple-tls -b :1080 -d 127.0.0.1:12345 -s -key /path/to/your/key -cert /path/to/your/cert
@@ -52,15 +48,15 @@
       证书路径。
   -key string
       密钥路径。
-  -no-tls
-      禁用 TLS。(用于配合其他 TLS 代理)
 
 # 其他通用参数
 
-  -fast-open
-      启用 tcp fast open，仅支持 Linux 4.11+ 内核。
   -t int
       连接空闲超时，单位秒 (默认300)。
+  -outbound-buf int
+      设置出站 tcp rw socket buf。
+  -inbound-buf    
+      设置入站 tcp rw socket buf。
 
 # 命令
 
@@ -89,7 +85,7 @@ simple-tls -b :1080 -d 127.0.0.1:12345 -s -n my.cert.domain
 simple-tls -b :1080 -d your.server.address:1080 -n my.cert.domain -no-verify
 ```
 
-服务端使用固定证书，客户端使用 hash 验证服务端证书。可提供较高的安全性。
+服务端使用固定证书，客户端使用 hash 验证服务端证书 (证书锁定)。
 
 ```shell
 # 服务端生成一个证书。

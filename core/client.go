@@ -26,20 +26,23 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
-	"github.com/IrineSistiana/ctunnel"
-	"io/ioutil"
+	"github.com/IrineSistiana/simple-tls/core/ctunnel"
+	"github.com/IrineSistiana/simple-tls/core/grpc_tunnel"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials"
+	"google.golang.org/grpc/keepalive"
+	"google.golang.org/grpc/metadata"
 	"net"
+	"os"
 	"strings"
 	"time"
 )
 
 type Client struct {
-	BindAddr      string
-	DstAddr       string
-	Websocket     bool
-	WebsocketPath string
-	Mux           int
-	Auth          string
+	BindAddr string
+	DstAddr  string
+	GRPC     bool
+	GRPCAuth string
 
 	ServerName         string
 	CA                 string
@@ -48,6 +51,8 @@ type Client struct {
 
 	IdleTimeout time.Duration
 	SocketOpts  *TcpConfig
+	OutboundBuf int
+	InboundBuf  int
 
 	testListener net.Listener
 }
@@ -55,7 +60,6 @@ type Client struct {
 var errEmptyCAFile = errors.New("no valid certificate was found in the ca file")
 
 func (c *Client) ActiveAndServe() error {
-
 	var l net.Listener
 	if c.testListener != nil {
 		l = c.testListener
@@ -67,6 +71,7 @@ func (c *Client) ActiveAndServe() error {
 			return err
 		}
 	}
+	l = wrapListener(l, c.InboundBuf)
 
 	if len(c.ServerName) == 0 {
 		c.ServerName = strings.SplitN(c.DstAddr, ":", 2)[0]
@@ -75,7 +80,7 @@ func (c *Client) ActiveAndServe() error {
 	var rootCAs *x509.CertPool
 	if len(c.CA) != 0 {
 		rootCAs = x509.NewCertPool()
-		certPEMBlock, err := ioutil.ReadFile(c.CA)
+		certPEMBlock, err := os.ReadFile(c.CA)
 		if err != nil {
 			return fmt.Errorf("cannot read ca file: %w", err)
 		}
@@ -101,9 +106,9 @@ func (c *Client) ActiveAndServe() error {
 	tlsConfig := &tls.Config{
 		ServerName:         c.ServerName,
 		RootCAs:            rootCAs,
-		InsecureSkipVerify: c.InsecureSkipVerify,
+		InsecureSkipVerify: len(chb) > 0 || c.InsecureSkipVerify,
 		VerifyConnection: func(state tls.ConnectionState) error {
-			if len(chb) != 0 {
+			if len(chb) > 0 {
 				cert := state.PeerCertificates[0]
 				h := sha256.Sum256(cert.RawTBSCertificate)
 				if bytes.Equal(h[:len(chb)], chb) {
@@ -119,21 +124,49 @@ func (c *Client) ActiveAndServe() error {
 		},
 	}
 
-	var transport Transport
-	if c.Websocket {
-		tlsConfig.NextProtos = []string{"http/1.1"}
-		transport = NewWebsocketTransport(c.DstAddr, c.ServerName, c.WebsocketPath, tlsConfig, dialer)
+	var dialRemote func(ctx context.Context) (net.Conn, error)
+	if c.GRPC {
+		grpcClientConn, err := grpc.Dial(c.DstAddr,
+			grpc.WithKeepaliveParams(keepalive.ClientParameters{
+				Time:                time.Second * 20,
+				Timeout:             time.Second * 5,
+				PermitWithoutStream: false,
+			}),
+			grpc.WithInitialWindowSize(64*1024),
+			grpc.WithInitialConnWindowSize(64*1024),
+			grpc.WithTransportCredentials(credentials.NewTLS(tlsConfig)),
+			grpc.WithContextDialer(func(ctx context.Context, s string) (net.Conn, error) {
+				remoteConn, err := dialer.DialContext(ctx, "tcp", s)
+				if remoteConn != nil {
+					applyTCPSocketBuf(remoteConn, c.OutboundBuf)
+				}
+				return remoteConn, err
+			}))
+		if err != nil {
+			return fmt.Errorf("failed to init grpc conn, %w", err)
+		}
+		grpcClient := grpc_tunnel.NewGRPCTunnelClient(grpcClientConn)
+		dialRemote = func(_ context.Context) (net.Conn, error) {
+			ctx := context.Background()
+			if len(c.GRPCAuth) > 0 {
+				ctx = metadata.NewOutgoingContext(ctx, metadata.New(map[string]string{grpcAuthHeader: c.GRPCAuth}))
+			}
+			stream, err := grpcClient.Connect(ctx)
+			if err != nil {
+				return nil, err
+			}
+			return newGrpcPeerConn(stream), nil
+		}
 	} else {
-		tlsConfig.NextProtos = []string{"h2", "http/1.1"}
-		transport = NewRawConnTransport(c.DstAddr, dialer)
-		transport = NewTLSTransport(transport, tlsConfig)
+		dialRemote = func(ctx context.Context) (net.Conn, error) {
+			tlsDialer := tls.Dialer{NetDialer: dialer, Config: tlsConfig}
+			remoteConn, err := tlsDialer.DialContext(ctx, "tcp", c.DstAddr)
+			if remoteConn != nil {
+				applyTCPSocketBuf(remoteConn, c.OutboundBuf)
+			}
+			return remoteConn, err
+		}
 	}
-
-	if len(c.Auth) > 0 {
-		transport = NewAuthTransport(transport, c.Auth)
-	}
-
-	transport = NewMuxTransport(transport, c.Mux, c.IdleTimeout)
 
 	for {
 		clientConn, err := l.Accept()
@@ -146,7 +179,7 @@ func (c *Client) ActiveAndServe() error {
 
 			ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
 			defer cancel()
-			serverConn, err := transport.Dial(ctx)
+			serverConn, err := dialRemote(ctx)
 			if err != nil {
 				errLogger.Printf("failed to dial server connection: %v", err)
 				return
@@ -159,5 +192,37 @@ func (c *Client) ActiveAndServe() error {
 			}
 		}()
 	}
+}
 
+type listenerWrapper struct {
+	buf    int
+	innerL net.Listener
+}
+
+func wrapListener(l net.Listener, buf int) net.Listener {
+	lw, ok := l.(*listenerWrapper)
+	if ok {
+		lw.buf = buf
+		return lw
+	}
+	return &listenerWrapper{
+		buf:    buf,
+		innerL: l,
+	}
+}
+
+func (l *listenerWrapper) Accept() (net.Conn, error) {
+	c, err := l.innerL.Accept()
+	if c != nil {
+		applyTCPSocketBuf(c, l.buf)
+	}
+	return c, err
+}
+
+func (l *listenerWrapper) Close() error {
+	return l.innerL.Close()
+}
+
+func (l *listenerWrapper) Addr() net.Addr {
+	return l.innerL.Addr()
 }

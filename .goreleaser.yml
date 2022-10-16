@@ -1,0 +1,43 @@
+before:
+  hooks:
+    - go mod tidy
+builds:
+  - goos:
+      - linux
+      - windows
+    goarch:
+      - amd64
+      - arm
+      - arm64
+      - mipsle
+      - mips
+      - 386
+    gomips:
+      - hardfloat
+      - softfloat
+    goarm:
+      - 7
+    ignore:
+      - goos: windows
+        goarch: arm
+        goarm: 7
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w -X main.version={{.Version}}
+
+archives:
+  - id: simple-tls-archives
+    builds:
+      - simple-tls
+    name_template: "{{ .ProjectName }}-{{ .Os }}-{{ .Arch }}{{ if .Arm }}-{{ .Arm }}{{ end }}{{ if .Mips }}-{{ .Mips }}{{ end }}"
+    format: zip
+    files:
+      - LICENSE
+      - README.md
+changelog:
+  skip: true
+
+snapshot:
+  name_template: "{{ .Tag }}-next"
+

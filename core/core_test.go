@@ -73,7 +73,7 @@ func Test_main(t *testing.T) {
 	}()
 
 	// test1
-	test := func(t *testing.T, wg *sync.WaitGroup, mux int, ws bool, wsPath string, auth string) {
+	test := func(t *testing.T, wg *sync.WaitGroup, grpc bool, auth string) {
 		testFinished := uint32(0)
 		serverListener, err := net.Listen("tcp", "127.0.0.1:0")
 		if err != nil {
@@ -94,13 +94,12 @@ func Test_main(t *testing.T) {
 		}
 
 		server := Server{
-			DstAddr:       echoListener.Addr().String(),
-			Websocket:     ws,
-			WebsocketPath: wsPath,
-			Auth:          auth,
-			IdleTimeout:   timeout,
-			testListener:  serverListener,
-			testCert:      &cert,
+			DstAddr:      echoListener.Addr().String(),
+			GRPC:         grpc,
+			GRPCAuth:     auth,
+			IdleTimeout:  timeout,
+			testListener: serverListener,
+			testCert:     &cert,
 		}
 
 		wg.Add(1)
@@ -121,10 +120,8 @@ func Test_main(t *testing.T) {
 
 		client := Client{
 			DstAddr:            serverListener.Addr().String(),
-			Websocket:          ws,
-			WebsocketPath:      wsPath,
-			Mux:                mux,
-			Auth:               auth,
+			GRPC:               grpc,
+			GRPCAuth:           auth,
 			CertHash:           certHash,
 			InsecureSkipVerify: true,
 			IdleTimeout:        timeout,
@@ -179,19 +176,15 @@ func Test_main(t *testing.T) {
 		atomic.StoreUint32(&testFinished, 1)
 	}
 
-	for _, mux := range [...]int{0, 1, 5} {
-		for _, ws := range [...]bool{false, true} {
-			for _, wsPath := range [...]string{"", "/123456"} {
-				for _, auth := range [...]string{"", "123456"} {
-					subt := fmt.Sprintf("mux_%v_ws_%v_wsPath_%v_auth_%v", mux, ws, wsPath, auth)
-					t.Logf("testing %s", subt)
-					wg := new(sync.WaitGroup)
-					test(t, wg, mux, ws, wsPath, auth)
-					wg.Wait()
-					if t.Failed() {
-						t.Fatalf("test %s failed", subt)
-					}
-				}
+	for _, grpc := range [...]bool{false, true} {
+		for _, auth := range [...]string{"", "123456"} {
+			subt := fmt.Sprintf("grpc_%v_auth_%v", grpc, auth)
+			t.Logf("testing %s", subt)
+			wg := new(sync.WaitGroup)
+			test(t, wg, grpc, auth)
+			wg.Wait()
+			if t.Failed() {
+				t.Fatalf("test %s failed", subt)
 			}
 		}
 	}

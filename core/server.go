@@ -18,27 +18,27 @@
 package core
 
 import (
-	"context"
 	"crypto/tls"
 	"errors"
 	"fmt"
+	"github.com/IrineSistiana/simple-tls/core/grpc_tunnel"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials"
+	"google.golang.org/grpc/keepalive"
 	"log"
 	"net"
 	"time"
 )
 
 type Server struct {
-	BindAddr string
-	DstAddr  string
-
-	Websocket     bool
-	WebsocketPath string
-
+	BindAddr              string
+	DstAddr               string
+	GRPC                  bool
+	GRPCAuth              string
 	Cert, Key, ServerName string
-	Auth                  string
-	TFO                   bool
 	IdleTimeout           time.Duration
-	NoTLS                 bool
+	OutboundBuf           int
+	InboundBuf            int
 
 	testListener net.Listener
 	testCert     *tls.Certificate
@@ -52,65 +52,68 @@ func (s *Server) ActiveAndServe() error {
 		l = s.testListener
 	} else {
 		var err error
-		lc := net.ListenConfig{Control: GetControlFunc(&TcpConfig{EnableTFO: s.TFO})}
-		l, err = lc.Listen(context.Background(), "tcp", s.BindAddr)
+		l, err = net.Listen("tcp", s.BindAddr)
 		if err != nil {
 			return err
 		}
 	}
 
-	var transportHandler TransportHandler
-	transportHandler = NewBaseTransportHandler(s.DstAddr, s.IdleTimeout)
-	transportHandler = NewMuxTransportHandler(transportHandler, s.IdleTimeout)
-	if len(s.Auth) > 0 {
-		transportHandler = NewAuthTransportHandler(transportHandler, s.Auth)
-	}
-
-	if !s.NoTLS {
-		var certificate tls.Certificate
-		if s.testCert != nil {
-			certificate = *s.testCert
-		} else {
-			switch {
-			case len(s.Cert) == 0 && len(s.Key) == 0: // no cert and key
-				dnsName, _, keyPEM, certPEM, err := GenerateCertificate(s.ServerName, nil)
-				if err != nil {
-					return fmt.Errorf("failed to generate temp cert: %w", err)
-				}
-
-				log.Printf("warnning: you are using a tmp certificate with dns name: %s", dnsName)
-				cer, err := tls.X509KeyPair(certPEM, keyPEM)
-				if err != nil {
-					return fmt.Errorf("cannot load x509 key pair from memory: %w", err)
-				}
-
-				certificate = cer
-			case len(s.Cert) != 0 && len(s.Key) != 0: // has a cert and a key
-				cer, err := tls.LoadX509KeyPair(s.Cert, s.Key) //load cert
-				if err != nil {
-					return fmt.Errorf("cannot load x509 key pair from disk: %w", err)
-				}
-				certificate = cer
-			default:
-				return errMissingCertOrKey
+	var certificate tls.Certificate
+	if s.testCert != nil {
+		certificate = *s.testCert
+	} else {
+		switch {
+		case len(s.Cert) == 0 && len(s.Key) == 0: // no cert and key
+			dnsName, _, keyPEM, certPEM, err := GenerateCertificate(s.ServerName, nil)
+			if err != nil {
+				return fmt.Errorf("failed to generate temp cert: %w", err)
 			}
-		}
 
-		tlsConfig := &tls.Config{
-			Certificates: []tls.Certificate{certificate},
-			VerifyConnection: func(state tls.ConnectionState) error {
-				if state.Version != tls.VersionTLS13 {
-					return fmt.Errorf("unsafe tls version %d", state.Version)
-				}
-				return nil
-			},
-		}
+			log.Printf("warnning: you are using a tmp certificate with dns name: %s", dnsName)
+			cer, err := tls.X509KeyPair(certPEM, keyPEM)
+			if err != nil {
+				return fmt.Errorf("cannot load x509 key pair from memory: %w", err)
+			}
 
-		l = tls.NewListener(l, tlsConfig)
+			certificate = cer
+		case len(s.Cert) != 0 && len(s.Key) != 0: // has a cert and a key
+			cer, err := tls.LoadX509KeyPair(s.Cert, s.Key) //load cert
+			if err != nil {
+				return fmt.Errorf("cannot load x509 key pair from disk: %w", err)
+			}
+			certificate = cer
+		default:
+			return errMissingCertOrKey
+		}
 	}
 
-	if s.Websocket {
-		return ListenWebsocket(l, s.WebsocketPath, transportHandler)
+	tlsConfig := &tls.Config{
+		Certificates: []tls.Certificate{certificate},
+		VerifyConnection: func(state tls.ConnectionState) error {
+			if state.Version != tls.VersionTLS13 {
+				return fmt.Errorf("unsafe tls version %d", state.Version)
+			}
+			return nil
+		},
 	}
-	return ListenRawConn(l, transportHandler)
+
+	if s.GRPC {
+		grpcServer := grpc.NewServer(
+			grpc.KeepaliveParams(keepalive.ServerParameters{
+				MaxConnectionIdle: time.Second * 300,
+				Time:              time.Second * 30,
+				Timeout:           time.Second * 10,
+			}),
+			grpc.MaxSendMsgSize(64*1024),
+			grpc.MaxRecvMsgSize(64*1024),
+			grpc.Creds(credentials.NewTLS(tlsConfig)),
+			grpc.InitialWindowSize(64*1024),
+			grpc.InitialConnWindowSize(64*1024),
+		)
+		grpc_tunnel.RegisterGRPCTunnelServer(grpcServer, newGrpcServerHandler(s.DstAddr, s.GRPCAuth, s.IdleTimeout, s.OutboundBuf))
+		return grpcServer.Serve(l)
+	}
+
+	l = tls.NewListener(l, tlsConfig)
+	return ListenRawConn(l, NewDstTransportHandler(s.DstAddr, s.IdleTimeout, s.OutboundBuf))
 }

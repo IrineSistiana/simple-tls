@@ -21,7 +21,7 @@ import (
 	"context"
 	"crypto/tls"
 	"fmt"
-	"github.com/IrineSistiana/ctunnel"
+	"github.com/IrineSistiana/simple-tls/core/ctunnel"
 	"net"
 	"time"
 )
@@ -34,63 +34,27 @@ type TransportHandler interface {
 	Handle(conn net.Conn) error
 }
 
-type RawConnTransport struct {
-	addr   string
-	dialer *net.Dialer
+type DstTransportHandler struct {
+	dst             string
+	idleTimeout     time.Duration
+	outboundBufSize int
 }
 
-func (t *RawConnTransport) Dial(ctx context.Context) (net.Conn, error) {
-	return t.dialer.DialContext(ctx, "tcp", t.addr)
-}
-
-func NewRawConnTransport(addr string, dialer *net.Dialer) *RawConnTransport {
-	return &RawConnTransport{addr: addr, dialer: dialer}
-}
-
-type TLSTransport struct {
-	nextTransport Transport
-	conf          *tls.Config
-}
-
-func (t *TLSTransport) Dial(ctx context.Context) (net.Conn, error) {
-	conn, err := t.nextTransport.Dial(ctx)
-	if err != nil {
-		return nil, err
-	}
-
-	tlsConn := tls.Client(conn, t.conf)
-	if err := tlsConn.HandshakeContext(ctx); err != nil {
-		tlsConn.Close()
-		return nil, err
-	}
-	return tlsConn, nil
-}
-
-func NewTLSTransport(nextTransport Transport, conf *tls.Config) *TLSTransport {
-	return &TLSTransport{nextTransport: nextTransport, conf: conf}
-}
-
-type BaseTransportHandler struct {
-	dst         string
-	idleTimeout time.Duration
-}
-
-func (h *BaseTransportHandler) Handle(conn net.Conn) error {
+func (h *DstTransportHandler) Handle(conn net.Conn) error {
 	dstConn, err := net.Dial("tcp", h.dst)
 	if err != nil {
 		return fmt.Errorf("cannot connect to the dst: %w", err)
 	}
-	reduceTCPLoopbackSocketBuf(dstConn)
 	defer dstConn.Close()
-
+	applyTCPSocketBuf(dstConn, h.outboundBufSize)
 	if err := ctunnel.OpenTunnel(dstConn, conn, h.idleTimeout); err != nil {
 		return fmt.Errorf("tunnel closed: %w", err)
 	}
 	return nil
 }
 
-func NewBaseTransportHandler(dst string, idleTimeout time.Duration) *BaseTransportHandler {
-	return &BaseTransportHandler{dst: dst, idleTimeout: idleTimeout}
+func NewDstTransportHandler(dst string, idleTimeout time.Duration, outboundBufSize int) *DstTransportHandler {
+	return &DstTransportHandler{dst: dst, idleTimeout: idleTimeout, outboundBufSize: outboundBufSize}
 }
 
 func ListenRawConn(l net.Listener, nextHandler TransportHandler) error {
@@ -99,9 +63,18 @@ func ListenRawConn(l net.Listener, nextHandler TransportHandler) error {
 		if err != nil {
 			return err
 		}
-
 		go func() {
 			defer conn.Close()
+
+			if tlsConn, ok := conn.(*tls.Conn); ok {
+				ctx, cancel := context.WithTimeout(context.Background(), time.Second*3)
+				err := tlsConn.HandshakeContext(ctx)
+				cancel()
+				if err != nil {
+					logConnErr(conn, err)
+					return
+				}
+			}
 			err := nextHandler.Handle(conn)
 			if err != nil {
 				logConnErr(conn, err)

@@ -17,22 +17,40 @@
 
 package core
 
-import "net"
+import (
+	"net"
+)
 
 type TcpConfig struct {
 	AndroidVPN bool
-	EnableTFO  bool
-	TTL        int
 }
 
-func reduceTCPLoopbackSocketBuf(c net.Conn) {
+// applyTCPSocketBuf set tcp socket io buf if c is a *net.TCPConn.
+// If c is a loopback conn, a 64k buf size will be applied. Otherwise,
+// the buf size is set to userConfig.
+// If userConfig <=0 applyTCPSocketBuf is a noop.
+func applyTCPSocketBuf(c net.Conn, userConfig int) {
 	tcpConn, ok := c.(*net.TCPConn)
-	if ok && isLoopbackConn(tcpConn) {
-		tcpConn.SetReadBuffer(128 * 1024)
-		tcpConn.SetWriteBuffer(128 * 1024)
+	if ok {
+		if isLocalConn(tcpConn) {
+			tcpConn.SetReadBuffer(64 * 1024)
+			tcpConn.SetWriteBuffer(64 * 1024)
+		} else if userConfig > 0 {
+			tcpConn.SetReadBuffer(userConfig)
+			tcpConn.SetWriteBuffer(userConfig)
+		}
+
 	}
 }
 
-func isLoopbackConn(c *net.TCPConn) bool {
-	return c.LocalAddr().(*net.TCPAddr).IP.IsLoopback() || c.RemoteAddr().(*net.TCPAddr).IP.IsLoopback()
+func isLocalConn(c *net.TCPConn) bool {
+	la, ok := c.LocalAddr().(*net.TCPAddr)
+	if !ok {
+		return false
+	}
+	ra, ok := c.RemoteAddr().(*net.TCPAddr)
+	if !ok {
+		return false
+	}
+	return la.IP.IsLoopback() || ra.IP.IsLoopback()
 }

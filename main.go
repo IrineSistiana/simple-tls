@@ -23,7 +23,6 @@ import (
 	"encoding/pem"
 	"flag"
 	"fmt"
-	"io/ioutil"
 	"log"
 	"os"
 	"os/signal"
@@ -41,7 +40,7 @@ var version = "unknown/dev"
 
 func main() {
 	go func() {
-		//wait signals
+		// wait signals
 		osSignals := make(chan os.Signal, 1)
 		signal.Notify(osSignals, os.Interrupt, os.Kill, syscall.SIGTERM)
 		s := <-osSignals
@@ -49,9 +48,9 @@ func main() {
 		os.Exit(0)
 	}()
 
-	var bindAddr, dstAddr, auth, serverName, wsPath, ca, cert, key, hashCert, certHash, template string
-	var ws, insecureSkipVerify, isServer, noTLS, tfo, vpn, genCert, showVersion bool
-	var cpu, mux, ttl int
+	var bindAddr, dstAddr, grpcAuthHeader, serverName, ca, cert, key, hashCert, certHash, template string
+	var insecureSkipVerify, isServer, vpn, genCert, showVersion, grpc bool
+	var cpu, outboundBufSize, inboundBufSize int
 	var timeout time.Duration
 	var timeoutFlag int
 
@@ -59,16 +58,15 @@ func main() {
 
 	commandLine.StringVar(&bindAddr, "b", "", "[Host:Port] bind address")
 	commandLine.StringVar(&dstAddr, "d", "", "[Host:Port] destination address")
-	commandLine.StringVar(&auth, "auth", "", "server password")
-
-	commandLine.BoolVar(&ws, "ws", false, "websocket mode")
-	commandLine.StringVar(&wsPath, "ws-path", "", "websocket path")
+	commandLine.BoolVar(&grpc, "grpc", false, "use grpc as a transport")
+	commandLine.StringVar(&grpcAuthHeader, "grpc-auth", "", "grpc auth header")
+	commandLine.IntVar(&outboundBufSize, "outbound-buf", 0, "outbound socket buf size")
+	commandLine.IntVar(&inboundBufSize, "inbound-buf", 0, "inbound socket buf size")
 
 	// client only
-	commandLine.IntVar(&mux, "mux", 0, "enable mux")
 	commandLine.StringVar(&serverName, "n", "", "server name")
 	commandLine.StringVar(&ca, "ca", "", "PEM CA file path")
-	commandLine.StringVar(&certHash, "cert-hash", "", "server certificate hash")
+	commandLine.StringVar(&certHash, "cert-hash", "", "server certificate hash (pin server cert)")
 
 	commandLine.BoolVar(&insecureSkipVerify, "no-verify", false, "client won't verify the server's certificate chain and host name")
 	commandLine.BoolVar(&vpn, "V", false, "DO NOT USE, this is for android vpn mode")
@@ -77,12 +75,9 @@ func main() {
 	commandLine.BoolVar(&isServer, "s", false, "run as a server (without this simple-tls runs as a client)")
 	commandLine.StringVar(&cert, "cert", "", "PEM cert file")
 	commandLine.StringVar(&key, "key", "", "PEM key file")
-	commandLine.BoolVar(&noTLS, "no-tls", false, "disable server tls")
 
 	// etc
 	commandLine.IntVar(&timeoutFlag, "t", 300, "timeout in sec")
-	commandLine.BoolVar(&tfo, "fast-open", false, "enable tfo, only available on linux 4.11+")
-	commandLine.IntVar(&ttl, "ttl", 0, "set the time-to-live field that is sed in every packet.")
 	commandLine.IntVar(&cpu, "cpu", runtime.NumCPU(), "the maximum number of CPUs that can be executing simultaneously")
 
 	// helper commands
@@ -162,7 +157,7 @@ func main() {
 	}
 
 	if len(hashCert) != 0 {
-		rawCert, err := ioutil.ReadFile(hashCert)
+		rawCert, err := os.ReadFile(hashCert)
 		if err != nil {
 			log.Fatalf("failed to read cert file: %v", err)
 		}
@@ -190,68 +185,60 @@ func main() {
 	if sip003Args != nil {
 		log.Print("simple-tls is running as a sip003 plugin")
 
-		var ok bool
-		var s string
+		applyBoolOpt := func(v *bool, key string) {
+			_, ok := sip003Args.SS_PLUGIN_OPTIONS[key]
+			*v = *v || ok
+		}
+
+		applyStringOpt := func(v *string, key string) {
+			s := sip003Args.SS_PLUGIN_OPTIONS[key]
+			if len(s) != 0 {
+				*v = s
+			}
+		}
+		applyIntOpt := func(v *int, key string) {
+			s := sip003Args.SS_PLUGIN_OPTIONS[key]
+			if len(s) != 0 {
+				i, err := strconv.Atoi(s)
+				if err != nil {
+					log.Fatalf("invalid value of key %s, %s", key, err)
+				}
+				if i > 0 {
+					*v = i
+				}
+			}
+		}
 
 		// android only
-		_, ok = sip003Args.SS_PLUGIN_OPTIONS["V"]
-		vpn = vpn || ok
-		_, ok = sip003Args.SS_PLUGIN_OPTIONS["__android_vpn"]
-		vpn = vpn || ok
+		applyBoolOpt(&vpn, "V")             // before shadowsocks-android-plugin v2
+		applyBoolOpt(&vpn, "__android_vpn") // v2
+
+		if vpn {
+			log.Print("running in a android vpn mode")
+		}
 
 		// common
-		s, _ = sip003Args.SS_PLUGIN_OPTIONS["b"]
-		setStrIfNotEmpty(&bindAddr, s)
-		s, _ = sip003Args.SS_PLUGIN_OPTIONS["d"]
-		setStrIfNotEmpty(&dstAddr, s)
-		s, _ = sip003Args.SS_PLUGIN_OPTIONS["auth"]
-		setStrIfNotEmpty(&auth, s)
-
-		_, ok = sip003Args.SS_PLUGIN_OPTIONS["ws"]
-		ws = ws || ok
-		s, _ = sip003Args.SS_PLUGIN_OPTIONS["ws-path"]
-		setStrIfNotEmpty(&wsPath, s)
+		applyStringOpt(&bindAddr, "b")
+		applyStringOpt(&dstAddr, "d")
+		applyBoolOpt(&grpc, "grpc")
+		applyStringOpt(&grpcAuthHeader, "grpc-auth")
 
 		// client
-		s, _ = sip003Args.SS_PLUGIN_OPTIONS["n"]
-		setStrIfNotEmpty(&serverName, s)
-		s, _ = sip003Args.SS_PLUGIN_OPTIONS["mux"]
-		if err := setIntIfNotZero(&mux, s); err != nil {
-			log.Fatalf("invalid mux value, %v", err)
-		}
-		s, _ = sip003Args.SS_PLUGIN_OPTIONS["ca"]
-		setStrIfNotEmpty(&ca, s)
-		s, _ = sip003Args.SS_PLUGIN_OPTIONS["cert-hash"]
-		setStrIfNotEmpty(&certHash, s)
-
-		_, ok = sip003Args.SS_PLUGIN_OPTIONS["no-verify"]
-		insecureSkipVerify = insecureSkipVerify || ok
+		applyStringOpt(&serverName, "n")
+		applyStringOpt(&ca, "ca")
+		applyStringOpt(&certHash, "cert-hash")
+		applyBoolOpt(&insecureSkipVerify, "no-verify")
 
 		// server
-		_, ok = sip003Args.SS_PLUGIN_OPTIONS["s"]
-		isServer = isServer || ok
-		s, _ = sip003Args.SS_PLUGIN_OPTIONS["cert"]
-		setStrIfNotEmpty(&cert, s)
-		s, _ = sip003Args.SS_PLUGIN_OPTIONS["key"]
-		setStrIfNotEmpty(&key, s)
-		_, ok = sip003Args.SS_PLUGIN_OPTIONS["no-tls"]
-		noTLS = noTLS || ok
+		applyBoolOpt(&isServer, "s")
+		applyStringOpt(&cert, "cert")
+		applyStringOpt(&key, "key")
 
 		// etc
-		s, _ = sip003Args.SS_PLUGIN_OPTIONS["t"]
-		if err := setIntIfNotZero(&timeoutFlag, s); err != nil {
-			log.Fatalf("invalid timeout value, %v", err)
-		}
-		s, _ = sip003Args.SS_PLUGIN_OPTIONS["cpu"]
-		if err := setIntIfNotZero(&cpu, s); err != nil {
-			log.Fatalf("invalid cpu number, %v", err)
-		}
-		_, ok = sip003Args.SS_PLUGIN_OPTIONS["fast-open"]
-		tfo = tfo || ok
-		s, _ = sip003Args.SS_PLUGIN_OPTIONS["ttl"]
-		if err := setIntIfNotZero(&ttl, s); err != nil {
-			log.Fatalf("invalid ttl number, %v", err)
-		}
+		applyIntOpt(&timeoutFlag, "t")
+		applyIntOpt(&cpu, "cpu")
+		applyIntOpt(&outboundBufSize, "outbound-buf")
+		applyIntOpt(&inboundBufSize, "inbound-buf")
 
 		if isServer {
 			dstAddr = sip003Args.GetLocalAddr()
@@ -276,16 +263,16 @@ func main() {
 
 	if isServer {
 		server := core.Server{
-			BindAddr:      bindAddr,
-			DstAddr:       dstAddr,
-			Websocket:     ws,
-			WebsocketPath: wsPath,
-			Cert:          cert,
-			Key:           key,
-			ServerName:    serverName,
-			Auth:          auth,
-			TFO:           tfo,
-			IdleTimeout:   timeout,
+			BindAddr:    bindAddr,
+			DstAddr:     dstAddr,
+			Cert:        cert,
+			Key:         key,
+			ServerName:  serverName,
+			GRPC:        grpc,
+			GRPCAuth:    grpcAuthHeader,
+			IdleTimeout: timeout,
+			OutboundBuf: outboundBufSize,
+			InboundBuf:  inboundBufSize,
 		}
 		if err := server.ActiveAndServe(); err != nil {
 			log.Fatalf("server exited: %v", err)
@@ -297,19 +284,17 @@ func main() {
 		client := core.Client{
 			BindAddr:           bindAddr,
 			DstAddr:            dstAddr,
-			Websocket:          ws,
-			WebsocketPath:      wsPath,
-			Mux:                mux,
-			Auth:               auth,
+			GRPC:               grpc,
+			GRPCAuth:           grpcAuthHeader,
 			ServerName:         serverName,
 			CA:                 ca,
 			CertHash:           certHash,
 			InsecureSkipVerify: insecureSkipVerify,
 			IdleTimeout:        timeout,
+			OutboundBuf:        outboundBufSize,
+			InboundBuf:         inboundBufSize,
 			SocketOpts: &core.TcpConfig{
 				AndroidVPN: vpn,
-				EnableTFO:  tfo,
-				TTL:        ttl,
 			},
 		}
 
@@ -320,23 +305,4 @@ func main() {
 		log.Print("client exited")
 		return
 	}
-}
-
-func setStrIfNotEmpty(dst *string, src string) {
-	if len(src) != 0 {
-		*dst = src
-	}
-}
-
-func setIntIfNotZero(dst *int, src string) error {
-	if len(src) != 0 {
-		i, err := strconv.Atoi(src)
-		if err != nil {
-			return fmt.Errorf("string %s is not an int", src)
-		}
-		if i > 0 {
-			*dst = i
-		}
-	}
-	return nil
 }
