@@ -20,8 +20,8 @@
       [Host:Port] (必需) 目的地地址。
   -grpc
       使用 gRPC 协议。客户端和服务端需一致。
-  -grpc-auth string
-      gRPC 验证头。客户端和服务端需一致。可用于过滤扫描流量。
+  -grpc-path string
+      gRPC 路径。客户端和服务端需一致。可用于过滤扫描流量。
 
 # 客户端参数
 # e.g. simple-tls -b 127.0.0.1:1080 -d your_server_ip:1080 -n your.server.name

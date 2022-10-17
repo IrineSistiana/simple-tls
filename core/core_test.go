@@ -94,12 +94,12 @@ func Test_main(t *testing.T) {
 		}
 
 		server := Server{
-			DstAddr:      echoListener.Addr().String(),
-			GRPC:         grpc,
-			GRPCAuth:     auth,
-			IdleTimeout:  timeout,
-			testListener: serverListener,
-			testCert:     &cert,
+			DstAddr:         echoListener.Addr().String(),
+			GRPC:            grpc,
+			GRPCServiceName: auth,
+			IdleTimeout:     timeout,
+			testListener:    serverListener,
+			testCert:        &cert,
 		}
 
 		wg.Add(1)
@@ -121,7 +121,7 @@ func Test_main(t *testing.T) {
 		client := Client{
 			DstAddr:            serverListener.Addr().String(),
 			GRPC:               grpc,
-			GRPCAuth:           auth,
+			GRPCServiceName:    auth,
 			CertHash:           certHash,
 			InsecureSkipVerify: true,
 			IdleTimeout:        timeout,
@@ -138,17 +138,23 @@ func Test_main(t *testing.T) {
 		}()
 
 		connWg := new(sync.WaitGroup)
-		for i := 0; i < 5; i++ {
+		connTracker := make([]net.Conn, 0)
+		defer func() {
+			for _, conn := range connTracker {
+				conn.Close()
+			}
+		}()
+		for i := 0; i < 64; i++ {
+			conn, err := net.Dial("tcp", clientListener.Addr().String())
+			if err != nil {
+				t.Error(err)
+				return
+			}
+			conn.SetDeadline(time.Now().Add(timeout))
+			connTracker = append(connTracker, conn)
 			connWg.Add(1)
 			go func() {
 				defer connWg.Done()
-				conn, err := net.Dial("tcp", clientListener.Addr().String())
-				if err != nil {
-					t.Error(err)
-					return
-				}
-				defer conn.Close()
-				conn.SetDeadline(time.Now().Add(timeout))
 
 				data := randData()
 				connWg.Add(1)

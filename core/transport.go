@@ -47,7 +47,7 @@ func (h *DstTransportHandler) Handle(conn net.Conn) error {
 	}
 	defer dstConn.Close()
 	applyTCPSocketBuf(dstConn, h.outboundBufSize)
-	if err := ctunnel.OpenTunnel(dstConn, conn, h.idleTimeout); err != nil {
+	if err := ctunnel.OpenTunnel(dstConn, conn, ctunnel.TunnelOpts{IdleTimout: h.idleTimeout}); err != nil {
 		return fmt.Errorf("tunnel closed: %w", err)
 	}
 	return nil

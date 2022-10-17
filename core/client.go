@@ -27,11 +27,11 @@ import (
 	"errors"
 	"fmt"
 	"github.com/IrineSistiana/simple-tls/core/ctunnel"
-	"github.com/IrineSistiana/simple-tls/core/grpc_tunnel"
+	"github.com/IrineSistiana/simple-tls/core/grpc_lb"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/backoff"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/keepalive"
-	"google.golang.org/grpc/metadata"
 	"net"
 	"os"
 	"strings"
@@ -39,10 +39,10 @@ import (
 )
 
 type Client struct {
-	BindAddr string
-	DstAddr  string
-	GRPC     bool
-	GRPCAuth string
+	BindAddr        string
+	DstAddr         string
+	GRPC            bool
+	GRPCServiceName string
 
 	ServerName         string
 	CA                 string
@@ -126,14 +126,22 @@ func (c *Client) ActiveAndServe() error {
 
 	var dialRemote func(ctx context.Context) (net.Conn, error)
 	if c.GRPC {
-		grpcClientConn, err := grpc.Dial(c.DstAddr,
+		grpcDialOpts := []grpc.DialOption{
 			grpc.WithKeepaliveParams(keepalive.ClientParameters{
 				Time:                time.Second * 20,
 				Timeout:             time.Second * 5,
 				PermitWithoutStream: false,
 			}),
-			grpc.WithInitialWindowSize(64*1024),
-			grpc.WithInitialConnWindowSize(64*1024),
+			grpc.WithConnectParams(grpc.ConnectParams{
+				Backoff: backoff.Config{
+					BaseDelay:  time.Second,
+					Multiplier: 1.1,
+					Jitter:     0.5,
+					MaxDelay:   time.Second * 5,
+				},
+			}),
+			grpc.WithInitialWindowSize(64 * 1024),
+			grpc.WithInitialConnWindowSize(64 * 1024),
 			grpc.WithTransportCredentials(credentials.NewTLS(tlsConfig)),
 			grpc.WithContextDialer(func(ctx context.Context, s string) (net.Conn, error) {
 				remoteConn, err := dialer.DialContext(ctx, "tcp", s)
@@ -141,21 +149,16 @@ func (c *Client) ActiveAndServe() error {
 					applyTCPSocketBuf(remoteConn, c.OutboundBuf)
 				}
 				return remoteConn, err
-			}))
-		if err != nil {
-			return fmt.Errorf("failed to init grpc conn, %w", err)
+			}),
 		}
-		grpcClient := grpc_tunnel.NewGRPCTunnelClient(grpcClientConn)
-		dialRemote = func(_ context.Context) (net.Conn, error) {
-			ctx := context.Background()
-			if len(c.GRPCAuth) > 0 {
-				ctx = metadata.NewOutgoingContext(ctx, metadata.New(map[string]string{grpcAuthHeader: c.GRPCAuth}))
-			}
-			stream, err := grpcClient.Connect(ctx)
-			if err != nil {
-				return nil, err
-			}
-			return newGrpcPeerConn(stream), nil
+		grpcConnPool := grpc_lb.NewConnPool(grpc_lb.ConnPoolOpts{
+			Target:      c.DstAddr,
+			ServiceName: c.GRPCServiceName,
+			DialOpts:    grpcDialOpts,
+		})
+
+		dialRemote = func(ctx context.Context) (net.Conn, error) {
+			return grpcConnPool.GetConn(ctx)
 		}
 	} else {
 		dialRemote = func(ctx context.Context) (net.Conn, error) {
@@ -186,7 +189,7 @@ func (c *Client) ActiveAndServe() error {
 			}
 			defer serverConn.Close()
 
-			err = ctunnel.OpenTunnel(clientConn, serverConn, c.IdleTimeout)
+			err = ctunnel.OpenTunnel(clientConn, serverConn, ctunnel.TunnelOpts{IdleTimout: c.IdleTimeout})
 			if err != nil {
 				logConnErr(clientConn, fmt.Errorf("tunnel closed: %w", err))
 			}
@@ -194,6 +197,7 @@ func (c *Client) ActiveAndServe() error {
 	}
 }
 
+// listenerWrapper automatically set tcp socket buf when new conn is accepted.
 type listenerWrapper struct {
 	buf    int
 	innerL net.Listener

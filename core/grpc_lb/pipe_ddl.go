@@ -1,4 +1,4 @@
-package core
+package grpc_lb
 
 import (
 	"sync"

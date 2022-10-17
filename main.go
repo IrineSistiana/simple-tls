@@ -48,7 +48,7 @@ func main() {
 		os.Exit(0)
 	}()
 
-	var bindAddr, dstAddr, grpcAuthHeader, serverName, ca, cert, key, hashCert, certHash, template string
+	var bindAddr, dstAddr, grpcPath, serverName, ca, cert, key, hashCert, certHash, template string
 	var insecureSkipVerify, isServer, vpn, genCert, showVersion, grpc bool
 	var cpu, outboundBufSize, inboundBufSize int
 	var timeout time.Duration
@@ -59,7 +59,7 @@ func main() {
 	commandLine.StringVar(&bindAddr, "b", "", "[Host:Port] bind address")
 	commandLine.StringVar(&dstAddr, "d", "", "[Host:Port] destination address")
 	commandLine.BoolVar(&grpc, "grpc", false, "use grpc as a transport")
-	commandLine.StringVar(&grpcAuthHeader, "grpc-auth", "", "grpc auth header")
+	commandLine.StringVar(&grpcPath, "grpc-path", "", "grpc auth header")
 	commandLine.IntVar(&outboundBufSize, "outbound-buf", 0, "outbound socket buf size")
 	commandLine.IntVar(&inboundBufSize, "inbound-buf", 0, "inbound socket buf size")
 
@@ -221,7 +221,7 @@ func main() {
 		applyStringOpt(&bindAddr, "b")
 		applyStringOpt(&dstAddr, "d")
 		applyBoolOpt(&grpc, "grpc")
-		applyStringOpt(&grpcAuthHeader, "grpc-auth")
+		applyStringOpt(&grpcPath, "grpc-path")
 
 		// client
 		applyStringOpt(&serverName, "n")
@@ -263,16 +263,16 @@ func main() {
 
 	if isServer {
 		server := core.Server{
-			BindAddr:    bindAddr,
-			DstAddr:     dstAddr,
-			Cert:        cert,
-			Key:         key,
-			ServerName:  serverName,
-			GRPC:        grpc,
-			GRPCAuth:    grpcAuthHeader,
-			IdleTimeout: timeout,
-			OutboundBuf: outboundBufSize,
-			InboundBuf:  inboundBufSize,
+			BindAddr:        bindAddr,
+			DstAddr:         dstAddr,
+			Cert:            cert,
+			Key:             key,
+			ServerName:      serverName,
+			GRPC:            grpc,
+			GRPCServiceName: grpcPath,
+			IdleTimeout:     timeout,
+			OutboundBuf:     outboundBufSize,
+			InboundBuf:      inboundBufSize,
 		}
 		if err := server.ActiveAndServe(); err != nil {
 			log.Fatalf("server exited: %v", err)
@@ -285,7 +285,7 @@ func main() {
 			BindAddr:           bindAddr,
 			DstAddr:            dstAddr,
 			GRPC:               grpc,
-			GRPCAuth:           grpcAuthHeader,
+			GRPCServiceName:    grpcPath,
 			ServerName:         serverName,
 			CA:                 ca,
 			CertHash:           certHash,

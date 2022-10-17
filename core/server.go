@@ -34,7 +34,7 @@ type Server struct {
 	BindAddr              string
 	DstAddr               string
 	GRPC                  bool
-	GRPCAuth              string
+	GRPCServiceName       string
 	Cert, Key, ServerName string
 	IdleTimeout           time.Duration
 	OutboundBuf           int
@@ -109,8 +109,10 @@ func (s *Server) ActiveAndServe() error {
 			grpc.Creds(credentials.NewTLS(tlsConfig)),
 			grpc.InitialWindowSize(64*1024),
 			grpc.InitialConnWindowSize(64*1024),
+			grpc.MaxConcurrentStreams(64), // This limit is larger than the hardcoded client limit.
+			grpc.MaxHeaderListSize(2048),
 		)
-		grpc_tunnel.RegisterGRPCTunnelServer(grpcServer, newGrpcServerHandler(s.DstAddr, s.GRPCAuth, s.IdleTimeout, s.OutboundBuf))
+		grpc_tunnel.RegisterGRPCTunnelServerAddon(grpcServer, newGrpcServerHandler(s.DstAddr, s.IdleTimeout, s.OutboundBuf), s.GRPCServiceName)
 		return grpcServer.Serve(l)
 	}
 

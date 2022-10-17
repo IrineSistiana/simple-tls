@@ -1,17 +1,28 @@
 package ctunnel
 
 import (
+	"github.com/IrineSistiana/simple-tls/core/alloc"
+	"github.com/IrineSistiana/simple-tls/core/utils"
 	"io"
+	"math/rand"
 	"net"
 	"sync"
 	"time"
 )
 
+type TunnelOpts struct {
+	IdleTimout time.Duration
+}
+
+func (opts *TunnelOpts) init() {
+	utils.SetDefaultNum(&opts.IdleTimout, time.Second*300)
+}
+
 // OpenTunnel opens a tunnel between a and b.
 // It returns the first err encountered.
 // a and b will be closed by OpenTunnel.
-func OpenTunnel(a, b net.Conn, timeout time.Duration) error {
-	t := newTunnel(a, b, timeout)
+func OpenTunnel(a, b net.Conn, opts TunnelOpts) error {
+	t := newTunnel(a, b, opts)
 	go func() {
 		_, err := t.copyBuffer(a, b)
 		t.closePeersWithErr(err)
@@ -24,16 +35,16 @@ func OpenTunnel(a, b net.Conn, timeout time.Duration) error {
 }
 
 type tunnel struct {
-	a, b    net.Conn
-	timeout time.Duration
+	a, b net.Conn
+	opts TunnelOpts
 
 	closeOnce   sync.Once
 	closeNotify chan struct{}
 	closeErr    error
 }
 
-func newTunnel(a, b net.Conn, timeout time.Duration) *tunnel {
-	return &tunnel{a: a, b: b, timeout: timeout, closeNotify: make(chan struct{})}
+func newTunnel(a, b net.Conn, opts TunnelOpts) *tunnel {
+	return &tunnel{a: a, b: b, opts: opts, closeNotify: make(chan struct{})}
 }
 
 func (t *tunnel) closePeersWithErr(err error) {
@@ -58,14 +69,21 @@ func (t *tunnel) waitUntilClosed() error {
 }
 
 func (t *tunnel) copyBuffer(dst net.Conn, src net.Conn) (written int64, err error) {
-	buf := acquireIOBuf()
-	defer releaseIOBuf(buf)
-
+	var buf []byte
+	defer func() {
+		if buf != nil {
+			alloc.ReleaseBuf(buf)
+		}
+	}()
 	for {
-		src.SetDeadline(time.Now().Add(t.timeout))
+		if buf != nil {
+			alloc.ReleaseBuf(buf)
+		}
+		buf = alloc.GetBuf(6*1024 + rand.Intn(4*1024)) // random buf size
+		src.SetDeadline(time.Now().Add(t.opts.IdleTimout))
 		nr, er := src.Read(buf)
 		if nr > 0 {
-			dst.SetDeadline(time.Now().Add(t.timeout))
+			dst.SetDeadline(time.Now().Add(t.opts.IdleTimout))
 			nw, ew := dst.Write(buf[0:nr])
 			if nw > 0 {
 				written += int64(nw)
@@ -87,18 +105,4 @@ func (t *tunnel) copyBuffer(dst net.Conn, src net.Conn) (written int64, err erro
 		}
 	}
 	return written, err
-}
-
-var (
-	ioCopyBuffPool = &sync.Pool{New: func() interface{} {
-		return make([]byte, 8*1024)
-	}}
-)
-
-func acquireIOBuf() []byte {
-	return ioCopyBuffPool.Get().([]byte)
-}
-
-func releaseIOBuf(b []byte) {
-	ioCopyBuffPool.Put(b)
 }
