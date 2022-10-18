@@ -45,6 +45,7 @@ jobs:
             TAG=${{github.ref_name}}
             REPOSITORY=IrineSistiana/simple-tls
           platforms: linux/amd64,linux/arm/v7,linux/arm64
+          context: ./
           file: ./Dockerfile_buildx_actions
           push: true
           tags: |
