@@ -22,6 +22,7 @@ import (
 	"crypto/tls"
 	"fmt"
 	"github.com/IrineSistiana/simple-tls/core/ctunnel"
+	"github.com/IrineSistiana/simple-tls/core/mlog"
 	"net"
 	"time"
 )
@@ -71,13 +72,13 @@ func ListenRawConn(l net.Listener, nextHandler TransportHandler) error {
 				err := tlsConn.HandshakeContext(ctx)
 				cancel()
 				if err != nil {
-					logConnErr(conn, err)
+					mlog.LogConnErr("failed to tls handshake", conn, err)
 					return
 				}
 			}
 			err := nextHandler.Handle(conn)
 			if err != nil {
-				logConnErr(conn, err)
+				mlog.LogConnErr("handler err", conn, err)
 			}
 		}()
 	}

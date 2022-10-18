@@ -26,11 +26,14 @@ import (
 	"encoding/pem"
 	"errors"
 	"fmt"
+	"github.com/IrineSistiana/simple-tls/core/mlog"
 	"math/big"
 	mathRand "math/rand"
 	"os"
 	"time"
 )
+
+var logger = mlog.L()
 
 func GenerateCertificate(serverName string, template *x509.Certificate) (dnsName string, cert *x509.Certificate, keyPEM, certPEM []byte, err error) {
 	//priv key

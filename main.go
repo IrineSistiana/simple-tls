@@ -23,7 +23,9 @@ import (
 	"encoding/pem"
 	"flag"
 	"fmt"
-	"log"
+	"github.com/IrineSistiana/simple-tls/core/mlog"
+	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -38,18 +40,20 @@ import (
 
 var version = "unknown/dev"
 
+var logger = mlog.L()
+
 func main() {
 	go func() {
 		// wait signals
 		osSignals := make(chan os.Signal, 1)
 		signal.Notify(osSignals, os.Interrupt, os.Kill, syscall.SIGTERM)
 		s := <-osSignals
-		log.Printf("exiting: signal: %v", s)
+		logger.Info("exiting on signal", zap.Stringer("signal", s))
 		os.Exit(0)
 	}()
 
 	var bindAddr, dstAddr, grpcPath, serverName, ca, cert, key, hashCert, certHash, template string
-	var insecureSkipVerify, isServer, vpn, genCert, showVersion, grpc bool
+	var insecureSkipVerify, isServer, vpn, genCert, showVersion, grpc, debug bool
 	var cpu, outboundBufSize, inboundBufSize int
 	var timeout time.Duration
 	var timeoutFlag int
@@ -85,10 +89,15 @@ func main() {
 	commandLine.StringVar(&template, "template", "", "template certificate")
 	commandLine.BoolVar(&showVersion, "v", false, "output version info and exit")
 	commandLine.StringVar(&hashCert, "hash-cert", "", "print the hashes for the certificate")
+	commandLine.BoolVar(&debug, "vv", false, "verbose log")
 
 	err := commandLine.Parse(os.Args[1:])
 	if err != nil {
-		log.Fatalf("invalid arg: %v", err)
+		logger.Fatal("invalid arg", zap.Error(err))
+	}
+
+	if debug {
+		mlog.SetLvl(zapcore.DebugLevel)
 	}
 
 	// display version
@@ -99,18 +108,18 @@ func main() {
 
 	// gen cert
 	if genCert {
-		log.Print("generating PEM encoded key and cert")
+		logger.Info("generating PEM encoded key and cert")
 
 		var templateCert *x509.Certificate
 		if len(template) > 0 {
 			templateCert, err = core.LoadCert(template)
 			if err != nil {
-				log.Fatalf("cannot load template certificate: %v", err)
+				logger.Fatal("cannot load template certificate", zap.Error(err))
 			}
 		}
 		dnsName, certOut, keyPEM, certPEM, err := core.GenerateCertificate(serverName, templateCert)
 		if err != nil {
-			log.Fatalf("generateCertificate: %v", err)
+			logger.Fatal("generateCertificate", zap.Error(err))
 		}
 
 		var defaultOutFileName string
@@ -124,31 +133,31 @@ func main() {
 		if len(key) == 0 {
 			key = defaultOutFileName + ".key"
 		}
-		log.Printf("generating PEM encoded key to %s", key)
+		logger.Info("generating PEM encoded key", zap.String("file", key))
 		keyFile, err := os.Create(key)
 		if err != nil {
-			log.Fatalf("creating key file [%s]: %v", key, err)
+			logger.Fatal("creating key file", zap.String("file", key), zap.Error(err))
 		}
 		defer keyFile.Close()
 
 		_, err = keyFile.Write(keyPEM)
 		if err != nil {
-			log.Fatalf("writing key file [%s]: %v", key, err)
+			logger.Fatal("writing key file", zap.String("file", key), zap.Error(err))
 		}
 
 		// cert
 		if len(cert) == 0 {
 			cert = defaultOutFileName + ".cert"
 		}
-		log.Printf("generating PEM encoded cert to %s", cert)
+		logger.Info("generating PEM encoded cert", zap.String("file", cert))
 		certFile, err := os.Create(cert)
 		if err != nil {
-			log.Fatalf("creating cert file [%s]: %v", cert, err)
+			logger.Fatal("creating cert file", zap.String("file", cert), zap.Error(err))
 		}
 		defer certFile.Close()
 		_, err = certFile.Write(certPEM)
 		if err != nil {
-			log.Fatalf("writing cert file [%s]: %v", cert, err)
+			logger.Fatal("writing cert file", zap.String("file", cert), zap.Error(err))
 		}
 
 		fmt.Print("Your new cert hash is:\n")
@@ -159,16 +168,16 @@ func main() {
 	if len(hashCert) != 0 {
 		rawCert, err := os.ReadFile(hashCert)
 		if err != nil {
-			log.Fatalf("failed to read cert file: %v", err)
+			logger.Fatal("failed to read cert file", zap.Error(err))
 		}
 		b, _ := pem.Decode(rawCert)
 		if b.Type != "CERTIFICATE" {
-			log.Fatalf("invaild pem type [%s]", b.Type)
+			logger.Fatal("invaild pem type", zap.String("type", b.Type))
 		}
 
 		certs, err := x509.ParseCertificates(b.Bytes)
 		if err != nil {
-			log.Fatalf("failed to parse cert file: %v", err)
+			logger.Fatal("failed to parse cert file", zap.Error(err))
 		}
 		for _, cert := range certs {
 			h := sha256.Sum256(cert.RawTBSCertificate)
@@ -180,10 +189,10 @@ func main() {
 	// overwrite args from env
 	sip003Args, err := core.GetSIP003Args()
 	if err != nil {
-		log.Fatalf("sip003 error: %v", err)
+		logger.Fatal("sip003 error", zap.Error(err))
 	}
 	if sip003Args != nil {
-		log.Print("simple-tls is running as a sip003 plugin")
+		logger.Info("simple-tls is running as a sip003 plugin")
 
 		applyBoolOpt := func(v *bool, key string) {
 			_, ok := sip003Args.SS_PLUGIN_OPTIONS[key]
@@ -201,7 +210,7 @@ func main() {
 			if len(s) != 0 {
 				i, err := strconv.Atoi(s)
 				if err != nil {
-					log.Fatalf("invalid value of key %s, %s", key, err)
+					logger.Fatal("invalid numeric value of sip003 key", zap.String("key", key), zap.Error(err))
 				}
 				if i > 0 {
 					*v = i
@@ -214,7 +223,7 @@ func main() {
 		applyBoolOpt(&vpn, "__android_vpn") // v2
 
 		if vpn {
-			log.Print("running in a android vpn mode")
+			logger.Info("running in a android vpn mode")
 		}
 
 		// common
@@ -253,13 +262,19 @@ func main() {
 	runtime.GOMAXPROCS(cpu)
 
 	if len(bindAddr) == 0 {
-		log.Fatal("bind addr is required")
+		logger.Fatal("bind addr is required")
 	}
 	if len(dstAddr) == 0 {
-		log.Fatal("destination addr is required")
+		logger.Fatal("destination addr is required")
 	}
 
-	log.Printf("simple-tls %s (go version: %s, os: %s, arch: %s)", version, runtime.Version(), runtime.GOOS, runtime.GOARCH)
+	logger.Info(
+		"simple-tls is starting",
+		zap.String("version", version),
+		zap.String("go_version", runtime.Version()),
+		zap.String("os", runtime.GOOS),
+		zap.String("arch", runtime.GOARCH),
+	)
 
 	if isServer {
 		server := core.Server{
@@ -275,9 +290,9 @@ func main() {
 			InboundBuf:      inboundBufSize,
 		}
 		if err := server.ActiveAndServe(); err != nil {
-			log.Fatalf("server exited: %v", err)
+			logger.Fatal("server exited", zap.Error(err))
 		}
-		log.Print("server exited")
+		logger.Info("server exited")
 		return
 
 	} else { // do client
@@ -300,9 +315,9 @@ func main() {
 
 		err = client.ActiveAndServe()
 		if err != nil {
-			log.Fatalf("client exited: %v", err)
+			logger.Fatal("client exited", zap.Error(err))
 		}
-		log.Print("client exited")
+		logger.Info("client exited")
 		return
 	}
 }

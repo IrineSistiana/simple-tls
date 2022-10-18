@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"github.com/IrineSistiana/simple-tls/core/grpc_tunnel"
+	"go.uber.org/zap"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/connectivity"
 	"net"
@@ -13,6 +14,7 @@ import (
 
 const (
 	DefaultMaxStreamPreConn = 4
+	CCIdleTimeout           = time.Second * 10
 )
 
 type ConnPool struct {
@@ -24,6 +26,7 @@ type ConnPool struct {
 }
 
 func NewConnPool(opts ConnPoolOpts) *ConnPool {
+	opts.init()
 	return &ConnPool{
 		opts: opts,
 
@@ -39,11 +42,16 @@ type ConnPoolOpts struct {
 
 	// DialOpts for grpc.Dial. Must not have grpc.WithBlock.
 	DialOpts []grpc.DialOption
+
+	Logger *zap.Logger
 }
 
 func (opts *ConnPoolOpts) init() {
 	if opts.MaxStreamPerConn <= 0 {
 		opts.MaxStreamPerConn = DefaultMaxStreamPreConn
+	}
+	if opts.Logger == nil {
+		opts.Logger = zap.NewNop()
 	}
 }
 
@@ -76,11 +84,14 @@ func (p *ConnPool) GetConn(ctx context.Context) (net.Conn, error) {
 	stream, err := grpcClient.Connect(rpcCtx)
 	close(dialDone)
 	if err != nil {
+		p.ccStreamDone(cc)
 		return nil, err
 	}
 	return wrapCC(stream, p, cc), nil
 }
 
+// getCc retrieves a *grpc.ClientConn from pool or dials a new one.
+// The retried *grpc.ClientConn must be released by ccStreamDone.
 func (p *ConnPool) getCc() (*grpc.ClientConn, error) {
 	p.m.Lock()
 	defer p.m.Unlock()
@@ -104,6 +115,7 @@ func (p *ConnPool) getCc() (*grpc.ClientConn, error) {
 			p.busyCc[cc] = status
 		}
 		pickedCc = cc
+		break
 	}
 
 	if pickedCc != nil {
@@ -116,18 +128,20 @@ func (p *ConnPool) getCc() (*grpc.ClientConn, error) {
 		return nil, fmt.Errorf("failed to dial new grpc client conn, %w", err)
 	}
 	p.readyCc[cc] = &connStatus{ongoingStream: 1}
+	p.opts.Logger.Debug("new cc", zap.Int("ready", len(p.readyCc)), zap.Int("busy", len(p.busyCc)))
 	return cc, nil
 }
 
+// ccStreamDone release a *grpc.ClientConn retained by getCc.
 func (p *ConnPool) ccStreamDone(cc *grpc.ClientConn) {
 	p.m.Lock()
 	defer p.m.Unlock()
 
 	if status, ok := p.readyCc[cc]; ok {
-		p.streamDoneUpdateStatus(cc, status)
+		p.streamDoneUpdateStatusLocked(cc, status)
 	}
 	if status, ok := p.busyCc[cc]; ok {
-		p.streamDoneUpdateStatus(cc, status)
+		p.streamDoneUpdateStatusLocked(cc, status)
 		if status.ongoingStream < p.opts.MaxStreamPerConn {
 			delete(p.busyCc, cc)
 			p.readyCc[cc] = status
@@ -135,8 +149,8 @@ func (p *ConnPool) ccStreamDone(cc *grpc.ClientConn) {
 	}
 }
 
-// streamDoneUpdateStatus must be called when p.m is locked.
-func (p *ConnPool) streamDoneUpdateStatus(cc *grpc.ClientConn, s *connStatus) {
+// streamDoneUpdateStatusLocked must be called when p.m is locked.
+func (p *ConnPool) streamDoneUpdateStatusLocked(cc *grpc.ClientConn, s *connStatus) {
 	s.ongoingStream--
 	if s.ongoingStream == 0 {
 		if s.idleTimer == nil { // First time idle.
@@ -147,14 +161,16 @@ func (p *ConnPool) streamDoneUpdateStatus(cc *grpc.ClientConn, s *connStatus) {
 				_ = cc.Close()
 				delete(p.readyCc, cc)
 				delete(p.busyCc, cc)
+				p.opts.Logger.Debug("cc closed by idle timeout", zap.Int("ready", len(p.readyCc)), zap.Int("busy", len(p.busyCc)))
 			}
-			s.idleTimer = time.AfterFunc(time.Second*15, closeAndRemoveCcFromPool)
+			s.idleTimer = time.AfterFunc(CCIdleTimeout, closeAndRemoveCcFromPool)
 		} else {
-			s.idleTimer.Reset(time.Second * 15)
+			s.idleTimer.Reset(CCIdleTimeout)
 		}
 	}
 }
 
+// dialNewCc dials a new *grpc.ClientConn. This must not be blocked.
 func (p *ConnPool) dialNewCc() (*grpc.ClientConn, error) {
 	return grpc.Dial(p.opts.Target, p.opts.DialOpts...)
 }

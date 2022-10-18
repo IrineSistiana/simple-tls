@@ -28,6 +28,8 @@ import (
 	"fmt"
 	"github.com/IrineSistiana/simple-tls/core/ctunnel"
 	"github.com/IrineSistiana/simple-tls/core/grpc_lb"
+	"github.com/IrineSistiana/simple-tls/core/mlog"
+	"go.uber.org/zap"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/backoff"
 	"google.golang.org/grpc/credentials"
@@ -155,6 +157,7 @@ func (c *Client) ActiveAndServe() error {
 			Target:      c.DstAddr,
 			ServiceName: c.GRPCServiceName,
 			DialOpts:    grpcDialOpts,
+			Logger:      logger.Named("grpc_cc_pool"),
 		})
 
 		dialRemote = func(ctx context.Context) (net.Conn, error) {
@@ -184,14 +187,14 @@ func (c *Client) ActiveAndServe() error {
 			defer cancel()
 			serverConn, err := dialRemote(ctx)
 			if err != nil {
-				errLogger.Printf("failed to dial server connection: %v", err)
+				logger.Error("failed to dial server connection", zap.Error(err))
 				return
 			}
 			defer serverConn.Close()
 
 			err = ctunnel.OpenTunnel(clientConn, serverConn, ctunnel.TunnelOpts{IdleTimout: c.IdleTimeout})
 			if err != nil {
-				logConnErr(clientConn, fmt.Errorf("tunnel closed: %w", err))
+				mlog.LogConnErr("tunnel closed with err", clientConn, err)
 			}
 		}()
 	}
