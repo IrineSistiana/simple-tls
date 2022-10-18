@@ -1,5 +1,4 @@
 FROM --platform=${TARGETPLATFORM} golang:alpine as builder
-ARG CGO_ENABLED=0
 ARG TAG
 ARG REPOSITORY
 
@@ -18,4 +17,4 @@ COPY --from=builder /root/simple-tls/simple-tls /usr/bin/
 
 RUN apk add --no-cache ca-certificates
 
-ENTRYPOINT /usr/bin/simple-tls
+ENTRYPOINT ["/usr/bin/simple-tls"]
