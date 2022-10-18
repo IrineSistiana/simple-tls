@@ -27,6 +27,7 @@ import (
 	"google.golang.org/grpc/keepalive"
 	"log"
 	"net"
+	"strings"
 	"time"
 )
 
@@ -98,21 +99,35 @@ func (s *Server) ActiveAndServe() error {
 	}
 
 	if s.GRPC {
-		grpcServer := grpc.NewServer(
+		serverOpts := []grpc.ServerOption{
 			grpc.KeepaliveParams(keepalive.ServerParameters{
 				MaxConnectionIdle: time.Second * 300,
 				Time:              time.Second * 30,
 				Timeout:           time.Second * 10,
 			}),
-			grpc.MaxSendMsgSize(64*1024),
-			grpc.MaxRecvMsgSize(64*1024),
+			grpc.MaxSendMsgSize(64 * 1024),
+			grpc.MaxRecvMsgSize(64 * 1024),
 			grpc.Creds(credentials.NewTLS(tlsConfig)),
-			grpc.InitialWindowSize(64*1024),
-			grpc.InitialConnWindowSize(64*1024),
+			grpc.InitialWindowSize(64 * 1024),
+			grpc.InitialConnWindowSize(64 * 1024),
 			grpc.MaxConcurrentStreams(64), // This limit is larger than the hardcoded client limit.
 			grpc.MaxHeaderListSize(2048),
-		)
-		grpc_tunnel.RegisterGRPCTunnelServerAddon(grpcServer, newGrpcServerHandler(s.DstAddr, s.IdleTimeout, s.OutboundBuf), s.GRPCServiceName)
+		}
+		grpcServer := grpc.NewServer(serverOpts...)
+		if d := s.DstAddr; strings.ContainsRune(d, ',') {
+			pathDstPeers := strings.Split(s.DstAddr, ",")
+			for _, peer := range pathDstPeers {
+				path, dst, ok := strings.Cut(peer, "/")
+				if !ok {
+					return fmt.Errorf("invalid dst value [%s]", peer)
+				}
+				log.Printf("starting grpc func at path %s -> %s", path, dst)
+				grpc_tunnel.RegisterGRPCTunnelServerAddon(grpcServer, newGrpcServerHandler(dst, s.IdleTimeout, s.OutboundBuf), path)
+			}
+		} else {
+			grpc_tunnel.RegisterGRPCTunnelServerAddon(grpcServer, newGrpcServerHandler(s.DstAddr, s.IdleTimeout, s.OutboundBuf), s.GRPCServiceName)
+		}
+
 		return grpcServer.Serve(l)
 	}
 
