@@ -105,11 +105,10 @@ func GenerateCertificate(serverName string, template *x509.Certificate) (dnsName
 
 func randServerName() string {
 	r := mathRand.New(mathRand.NewSource(time.Now().UnixNano()))
-	return fmt.Sprintf("%s.%s", randStr(r.Intn(5)+3), randStr(r.Intn(3)+1))
+	return fmt.Sprintf("%s.%s", randStr(r.Intn(5)+3, r), randStr(r.Intn(3)+1, r))
 }
 
-func randStr(length int) string {
-	r := mathRand.New(mathRand.NewSource(time.Now().UnixNano()))
+func randStr(length int, r *mathRand.Rand) string {
 	set := "abcdefghijklmnopqrstuvwxyz"
 	b := make([]byte, length)
 	for i := range b {
