@@ -1,10 +1,10 @@
-FROM --platform=${TARGETPLATFORM} golang:alpine as builder
+FROM --platform=${TARGETPLATFORM} golang:latest as builder
+ARG REPOSITORY=IrineSistiana/simple-tls
 ARG TAG
-ARG REPOSITORY
+ARG CGO_ENABLED=0
 
 WORKDIR /root
-RUN apk add --update git \
-	&& git clone https://github.com/${REPOSITORY} simple-tls \
+RUN git clone https://github.com/${REPOSITORY} simple-tls \
 	&& cd ./simple-tls \
 	&& git fetch --all --tags \
 	&& git checkout tags/${TAG} \
@@ -16,5 +16,3 @@ LABEL maintainer="IrineSistiana <github.com/IrineSistiana>"
 COPY --from=builder /root/simple-tls/simple-tls /usr/bin/
 
 RUN apk add --no-cache ca-certificates
-
-ENTRYPOINT ["/usr/bin/simple-tls"]
