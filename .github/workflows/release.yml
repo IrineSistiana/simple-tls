@@ -26,6 +26,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+  release-docker:
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v2
 
@@ -45,8 +46,7 @@ jobs:
             TAG=${{github.ref_name}}
             REPOSITORY=IrineSistiana/simple-tls
           platforms: linux/amd64,linux/arm/v7,linux/arm64
-          context: ./
-          file: ./Dockerfile_buildx_actions
+          file: ./Dockerfile_buildx
           push: true
           tags: |
             ${{ secrets.DOCKERHUB_USERNAME }}/simple-tls:latest

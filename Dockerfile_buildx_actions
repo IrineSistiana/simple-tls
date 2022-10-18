@@ -1,9 +1,0 @@
-FROM --platform=${TARGETPLATFORM} alpine:latest
-LABEL maintainer="IrineSistiana <github.com/IrineSistiana>"
-
-ARG TARGETOS
-ARG TARGETARCH
-
-COPY ./dist/simple-tls_${TARGETOS}_${TARGETARCH}/simple-tls /usr/bin/
-
-RUN apk add --no-cache ca-certificates
