@@ -1,4 +1,4 @@
-// +build android
+//go:build android
 
 //     Copyright (C) 2020-2021, IrineSistiana
 //
@@ -19,18 +19,27 @@
 
 package core
 
+import "C"
 import (
-	"log"
-	"syscall"
-
 	"golang.org/x/sys/unix"
+	"log"
+	"net"
+	"syscall"
+	"time"
 )
 
 func GetControlFunc(conf *TcpConfig) func(network, address string, c syscall.RawConn) error {
 	return func(network, address string, c syscall.RawConn) error {
 		if conf.AndroidVPN {
-			if err := c.Control(sendFdToBypass); err != nil {
+			var scmErr error
+			if err := c.Control(func(fd uintptr) {
+				scmErr = sendFdToVPN(fd)
+			}); err != nil {
 				return err
+			}
+			if scmErr != nil {
+				log.Printf("failed to protect self conn from vpn service, %v", scmErr)
+				return scmErr
 			}
 		}
 		if conf != nil {
@@ -41,35 +50,20 @@ func GetControlFunc(conf *TcpConfig) func(network, address string, c syscall.Raw
 	}
 }
 
-var protectPath = "protect_path"
-var unixAddr = &unix.SockaddrUnix{Name: protectPath}
-var unixTimeout = &unix.Timeval{Sec: 3, Usec: 0}
-
-func sendFdToBypass(fd uintptr) {
-
-	socket, err := unix.Socket(unix.AF_UNIX, unix.SOCK_STREAM, 0)
+func sendFdToVPN(fd uintptr) error {
+	const vpnPath = "protect_path"
+	uc, err := net.DialUnix("unix", nil, &net.UnixAddr{Name: vpnPath})
 	if err != nil {
-		log.Printf("sendFdToBypass: Socket: %v", err)
-		return
+		return err
 	}
-	defer unix.Close(socket)
-
-	unix.SetsockoptTimeval(socket, unix.SOL_SOCKET, unix.SO_RCVTIMEO, unixTimeout)
-	unix.SetsockoptTimeval(socket, unix.SOL_SOCKET, unix.SO_SNDTIMEO, unixTimeout)
-
-	err = unix.Connect(socket, unixAddr)
+	defer uc.Close()
+	uc.SetDeadline(time.Now().Add(time.Second))
+	_, _, err = uc.WriteMsgUnix(nil, unix.UnixRights(int(fd)), nil)
 	if err != nil {
-		log.Printf("sendFdToBypass: Connect: %v", err)
-		return
+		return err
 	}
-
-	//send fd
-	if err := unix.Sendmsg(socket, nil, unix.UnixRights(int(fd)), nil, 0); err != nil {
-		log.Printf("sendFdToBypass: Sendmsg: %v", err)
-		return
+	if _, err := uc.Read([]byte{0}); err != nil {
+		return err
 	}
-
-	//Read test ???
-	unix.Read(socket, make([]byte, 1))
-	return
+	return nil
 }
