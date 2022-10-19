@@ -14,7 +14,7 @@ import (
 
 const (
 	DefaultMaxStreamPreConn = 4
-	CCIdleTimeout           = time.Second * 10
+	CCIdleTimeout           = time.Second * 60
 )
 
 type ConnPool struct {

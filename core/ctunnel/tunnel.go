@@ -69,6 +69,8 @@ func (t *tunnel) waitUntilClosed() error {
 }
 
 func (t *tunnel) copyBuffer(dst net.Conn, src net.Conn) (written int64, err error) {
+	r := rand.New(rand.NewSource(time.Now().UnixNano()))
+
 	var buf []byte
 	defer func() {
 		if buf != nil {
@@ -79,7 +81,7 @@ func (t *tunnel) copyBuffer(dst net.Conn, src net.Conn) (written int64, err erro
 		if buf != nil {
 			alloc.ReleaseBuf(buf)
 		}
-		buf = alloc.GetBuf(6*1024 + rand.Intn(4*1024)) // random buf size
+		buf = alloc.GetBuf(4*1024 + r.Intn(4*1024)) // random buf size 4~8k.
 		src.SetDeadline(time.Now().Add(t.opts.IdleTimout))
 		nr, er := src.Read(buf)
 		if nr > 0 {
