@@ -114,6 +114,10 @@ func (s *Server) ActiveAndServe() error {
 				Time:              time.Second * 30,
 				Timeout:           time.Second * 10,
 			}),
+			grpc.KeepaliveEnforcementPolicy(keepalive.EnforcementPolicy{
+				MinTime:             time.Second * 10,
+				PermitWithoutStream: false,
+			}),
 			grpc.MaxSendMsgSize(64 * 1024),
 			grpc.MaxRecvMsgSize(64 * 1024),
 			grpc.Creds(credentials.NewTLS(tlsConfig)),
