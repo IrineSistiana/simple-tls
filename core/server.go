@@ -27,6 +27,7 @@ import (
 	"google.golang.org/grpc/keepalive"
 	"log"
 	"net"
+	"os"
 	"strings"
 	"time"
 )
@@ -63,7 +64,15 @@ func (s *Server) ActiveAndServe() error {
 	if s.testCert != nil {
 		certificate = *s.testCert
 	} else {
+		envCert := os.Getenv("SIMPLE_TLS_CERT")
+		envKey := os.Getenv("SIMPLE_TLS_KEY")
 		switch {
+		case len(envCert) > 0 && len(envKey) > 0: // cert and key from env
+			cer, err := tls.X509KeyPair([]byte(envCert), []byte(envKey))
+			if err != nil {
+				return fmt.Errorf("failed load x509 key pair from env: %w", err)
+			}
+			certificate = cer
 		case len(s.Cert) == 0 && len(s.Key) == 0: // no cert and key
 			dnsName, _, keyPEM, certPEM, err := GenerateCertificate(s.ServerName, nil)
 			if err != nil {
