@@ -117,13 +117,13 @@ func (s *Server) ActiveAndServe() error {
 			grpc.MaxSendMsgSize(64 * 1024),
 			grpc.MaxRecvMsgSize(64 * 1024),
 			grpc.Creds(credentials.NewTLS(tlsConfig)),
-			grpc.InitialWindowSize(64 * 1024),
-			grpc.InitialConnWindowSize(64 * 1024),
+			grpc.InitialWindowSize(1024 * 1024),
+			grpc.InitialConnWindowSize(1024 * 1024),
 			grpc.MaxConcurrentStreams(64), // This limit is larger than the hardcoded client limit.
 			grpc.MaxHeaderListSize(2048),
 		}
 		grpcServer := grpc.NewServer(serverOpts...)
-		if d := s.DstAddr; strings.ContainsRune(d, ',') {
+		if d := s.DstAddr; strings.ContainsAny(d, "/,") {
 			pathDstPeers := strings.Split(s.DstAddr, ",")
 			for _, peer := range pathDstPeers {
 				path, dst, ok := strings.Cut(peer, "/")

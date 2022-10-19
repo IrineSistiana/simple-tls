@@ -142,8 +142,8 @@ func (c *Client) ActiveAndServe() error {
 					MaxDelay:   time.Second * 5,
 				},
 			}),
-			grpc.WithInitialWindowSize(64 * 1024),
-			grpc.WithInitialConnWindowSize(64 * 1024),
+			grpc.WithInitialWindowSize(1024 * 1024),
+			grpc.WithInitialConnWindowSize(1024 * 1024),
 			grpc.WithTransportCredentials(credentials.NewTLS(tlsConfig)),
 			grpc.WithContextDialer(func(ctx context.Context, s string) (net.Conn, error) {
 				remoteConn, err := dialer.DialContext(ctx, "tcp", s)
