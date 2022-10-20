@@ -21,7 +21,7 @@
   -grpc
       使用 gRPC 协议。客户端和服务端需一致。
   -grpc-path string
-      gRPC 路径。客户端和服务端需一致。可用于过滤扫描流量。
+      (可选) gRPC 服务路径。客户端和服务端需一致。
 
 # 客户端参数
 # e.g. simple-tls -b 127.0.0.1:1080 -d your_server_ip:1080 -n your.server.name
@@ -33,7 +33,7 @@
   -ca string
       用于验证服务端的证书的 CA 证书文件。(默认使用系统证书池)
   -cert-hash string
-      检查服务器证书的 hash。(服务端证书锁定)
+      服务器证书的 hash。(服务端证书锁定)
       tips: 使用 -hash-cert 命令可以生成证书的 hash
 
 # 服务端参数
@@ -114,3 +114,7 @@ sslocal -c config.json --plugin simple-tls --plugin-opts "n=your.server.certific
 simple-tls-android 是 [shadowsocks-android](https://github.com/shadowsocks/shadowsocks-android) 的带 GUI 的插件。目前随 simple-tls 一起发布。可从 release 界面下载全平台通用的 apk。
 
 simple-tls-android 的源代码在 [这里](https://github.com/IrineSistiana/simple-tls-android) 。
+
+### Beta 版本
+
+simple-tls 目前不保证版本之间的兼容性。
