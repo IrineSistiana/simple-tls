@@ -108,11 +108,14 @@ func (s *Server) ActiveAndServe() error {
 		},
 	}
 
-	var clientConnHandler TransportHandler
-	if s.testTransportHandler != nil {
-		clientConnHandler = s.testTransportHandler
-	} else {
-		clientConnHandler = NewDstTransportHandler(s.DstAddr, s.IdleTimeout, s.OutboundBuf)
+	outboundHandler := func(dst string) TransportHandler {
+		var handler TransportHandler
+		if s.testTransportHandler != nil {
+			handler = s.testTransportHandler
+		} else {
+			handler = NewDstTransportHandler(dst, s.IdleTimeout, s.OutboundBuf)
+		}
+		return handler
 	}
 
 	if s.GRPC {
@@ -143,15 +146,15 @@ func (s *Server) ActiveAndServe() error {
 					return fmt.Errorf("invalid dst value [%s]", peer)
 				}
 				log.Printf("starting grpc func at path %s -> %s", path, dst)
-				grpc_tunnel.RegisterGRPCTunnelServerAddon(grpcServer, newGrpcServerHandler(clientConnHandler), path)
+				grpc_tunnel.RegisterGRPCTunnelServerAddon(grpcServer, newGrpcServerHandler(outboundHandler(dst)), path)
 			}
 		} else {
-			grpc_tunnel.RegisterGRPCTunnelServerAddon(grpcServer, newGrpcServerHandler(clientConnHandler), s.GRPCServiceName)
+			grpc_tunnel.RegisterGRPCTunnelServerAddon(grpcServer, newGrpcServerHandler(outboundHandler(s.DstAddr)), s.GRPCServiceName)
 		}
 
 		return grpcServer.Serve(l)
 	}
 
 	l = tls.NewListener(l, tlsConfig)
-	return ListenRawConn(l, clientConnHandler)
+	return ListenRawConn(l, outboundHandler(s.DstAddr))
 }
