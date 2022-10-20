@@ -40,7 +40,7 @@ func Test_main(t *testing.T) {
 		return b
 	}
 
-	timeout := time.Second * 2
+	timeout := time.Second * 10
 
 	// echo server
 	echoListener, err := net.Listen("tcp", "127.0.0.1:0")

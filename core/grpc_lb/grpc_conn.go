@@ -20,7 +20,7 @@ type GrpcPeerRWCWrapper struct {
 	readBuf *bytes.Buffer
 
 	readChan     chan []byte
-	writeBufChan chan []byte // []bytes on this chan is managed by Allocator.
+	writeBufChan chan writeCmd
 
 	readDeadline  pipeDeadline
 	writeDeadline pipeDeadline
@@ -28,6 +28,11 @@ type GrpcPeerRWCWrapper struct {
 	closeOnce   sync.Once
 	closeNotify chan struct{}
 	closeErr    error // closeErr will be set before closeNotify was closed.
+}
+
+type writeCmd struct {
+	buf []byte     // buf is managed by Allocator.
+	err chan error // a chan to receive grpc Send() result.
 }
 
 func NewGrpcPeerConn(s grpc_tunnel.TunnelPeer) net.Conn {
@@ -42,7 +47,7 @@ func NewGrpcPeerConn(s grpc_tunnel.TunnelPeer) net.Conn {
 		stream:        s,
 		peerAddr:      addr,
 		readChan:      make(chan []byte),
-		writeBufChan:  make(chan []byte),
+		writeBufChan:  make(chan writeCmd),
 		readDeadline:  makePipeDeadline(),
 		writeDeadline: makePipeDeadline(),
 		closeNotify:   make(chan struct{}),
@@ -68,11 +73,14 @@ func (g *GrpcPeerRWCWrapper) readLoop() {
 }
 
 func (g *GrpcPeerRWCWrapper) writeLoop() {
+	msg := &grpc_tunnel.Bytes{}
 	for {
 		select {
-		case buf := <-g.writeBufChan:
-			err := g.stream.Send(&grpc_tunnel.Bytes{B: buf})
-			alloc.ReleaseBuf(buf)
+		case cmd := <-g.writeBufChan:
+			msg.B = cmd.buf
+			err := g.stream.Send(msg)
+			alloc.ReleaseBuf(cmd.buf)
+			cmd.err <- err
 			if err != nil {
 				g.closeWithErr(err)
 				return
@@ -128,8 +136,16 @@ func (g *GrpcPeerRWCWrapper) Write(p []byte) (n int, err error) {
 	buf := alloc.GetBuf(len(p))
 	copy(buf, p)
 
+	cmd := writeCmd{
+		buf: buf,
+		err: make(chan error),
+	}
 	select {
-	case g.writeBufChan <- buf:
+	case g.writeBufChan <- cmd:
+		err := <-cmd.err
+		if err != nil {
+			return 0, err
+		}
 		return len(p), nil
 	case <-g.writeDeadline.wait():
 		return 0, os.ErrDeadlineExceeded

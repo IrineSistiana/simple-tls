@@ -30,7 +30,7 @@ func TestOpenTunnel_IO(t *testing.T) {
 		c01.Close()
 	}()
 
-	err := OpenTunnel(c02, c11, time.Second)
+	err := OpenTunnel(c02, c11, TunnelOpts{IdleTimout: time.Second})
 	if err != nil {
 		t.Error(err)
 	}
@@ -45,7 +45,7 @@ func TestOpenTunnel_Timeout(t *testing.T) {
 	c11, _ := net.Pipe()
 
 	start := time.Now()
-	err := OpenTunnel(c02, c11, time.Millisecond*100)
+	err := OpenTunnel(c02, c11, TunnelOpts{IdleTimout: time.Millisecond * 50})
 	assert.WithinDuration(t, start, time.Now(), time.Millisecond*200, "timeout takes too long")
 	if err == nil {
 		t.Error("want a timeout err, but got nil")

@@ -33,7 +33,6 @@ func (d *pipeDeadline) set(t time.Time) {
 	if d.timer != nil && !d.timer.Stop() {
 		<-d.cancel // Wait for the timer callback to finish and close cancel
 	}
-	d.timer = nil
 
 	// Time is zero, then there is no deadline.
 	closed := isClosedChan(d.cancel)
@@ -49,9 +48,13 @@ func (d *pipeDeadline) set(t time.Time) {
 		if closed {
 			d.cancel = make(chan struct{})
 		}
-		d.timer = time.AfterFunc(dur, func() {
-			close(d.cancel)
-		})
+		if d.timer == nil {
+			d.timer = time.AfterFunc(dur, func() {
+				close(d.cancel)
+			})
+		} else {
+			d.timer.Reset(dur)
+		}
 		return
 	}
 

@@ -1,36 +1,28 @@
 package core
 
 import (
-	"fmt"
-	"github.com/IrineSistiana/simple-tls/core/ctunnel"
 	"github.com/IrineSistiana/simple-tls/core/grpc_lb"
 	"github.com/IrineSistiana/simple-tls/core/grpc_tunnel"
-	"net"
-	"time"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 type grpcServerHandler struct {
-	dst         string
-	timeout     time.Duration
-	outboundBuf int
+	connHandler TransportHandler
 
 	grpc_tunnel.UnimplementedGRPCTunnelServer
 }
 
-func newGrpcServerHandler(dst string, timeout time.Duration, outboundBuf int) *grpcServerHandler {
+func newGrpcServerHandler(connHandler TransportHandler) *grpcServerHandler {
 	return &grpcServerHandler{
-		dst:         dst,
-		timeout:     timeout,
-		outboundBuf: outboundBuf,
+		connHandler: connHandler,
 	}
 }
 
 func (g grpcServerHandler) Connect(stream grpc_tunnel.GRPCTunnel_ConnectServer) error {
-	dstConn, err := net.DialTimeout("tcp", g.dst, time.Second*5)
+	err := g.connHandler.Handle(grpc_lb.NewGrpcPeerConn(stream))
 	if err != nil {
-		return fmt.Errorf("failed to connect dst, %w", err)
+		return status.Error(codes.Internal, err.Error())
 	}
-	defer dstConn.Close()
-	applyTCPSocketBuf(dstConn, g.outboundBuf)
-	return ctunnel.OpenTunnel(dstConn, grpc_lb.NewGrpcPeerConn(stream), ctunnel.TunnelOpts{IdleTimout: g.timeout})
+	return nil
 }

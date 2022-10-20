@@ -42,8 +42,9 @@ type Server struct {
 	OutboundBuf           int
 	InboundBuf            int
 
-	testListener net.Listener
-	testCert     *tls.Certificate
+	testListener         net.Listener
+	testCert             *tls.Certificate
+	testTransportHandler TransportHandler
 }
 
 var errMissingCertOrKey = errors.New("one of cert or key argument is missing")
@@ -107,12 +108,19 @@ func (s *Server) ActiveAndServe() error {
 		},
 	}
 
+	var clientConnHandler TransportHandler
+	if s.testTransportHandler != nil {
+		clientConnHandler = s.testTransportHandler
+	} else {
+		clientConnHandler = NewDstTransportHandler(s.DstAddr, s.IdleTimeout, s.OutboundBuf)
+	}
+
 	if s.GRPC {
 		serverOpts := []grpc.ServerOption{
 			grpc.KeepaliveParams(keepalive.ServerParameters{
 				MaxConnectionIdle: time.Second * 300,
-				Time:              time.Second * 30,
-				Timeout:           time.Second * 10,
+				Time:              time.Second * 60,
+				Timeout:           time.Second * 20,
 			}),
 			grpc.KeepaliveEnforcementPolicy(keepalive.EnforcementPolicy{
 				MinTime:             time.Second * 10,
@@ -135,15 +143,15 @@ func (s *Server) ActiveAndServe() error {
 					return fmt.Errorf("invalid dst value [%s]", peer)
 				}
 				log.Printf("starting grpc func at path %s -> %s", path, dst)
-				grpc_tunnel.RegisterGRPCTunnelServerAddon(grpcServer, newGrpcServerHandler(dst, s.IdleTimeout, s.OutboundBuf), path)
+				grpc_tunnel.RegisterGRPCTunnelServerAddon(grpcServer, newGrpcServerHandler(clientConnHandler), path)
 			}
 		} else {
-			grpc_tunnel.RegisterGRPCTunnelServerAddon(grpcServer, newGrpcServerHandler(s.DstAddr, s.IdleTimeout, s.OutboundBuf), s.GRPCServiceName)
+			grpc_tunnel.RegisterGRPCTunnelServerAddon(grpcServer, newGrpcServerHandler(clientConnHandler), s.GRPCServiceName)
 		}
 
 		return grpcServer.Serve(l)
 	}
 
 	l = tls.NewListener(l, tlsConfig)
-	return ListenRawConn(l, NewDstTransportHandler(s.DstAddr, s.IdleTimeout, s.OutboundBuf))
+	return ListenRawConn(l, clientConnHandler)
 }

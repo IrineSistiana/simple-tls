@@ -130,7 +130,7 @@ func (c *Client) ActiveAndServe() error {
 	if c.GRPC {
 		grpcDialOpts := []grpc.DialOption{
 			grpc.WithKeepaliveParams(keepalive.ClientParameters{
-				Time:                time.Second * 20,
+				Time:                time.Second * 90,
 				Timeout:             time.Second * 5,
 				PermitWithoutStream: false,
 			}),
